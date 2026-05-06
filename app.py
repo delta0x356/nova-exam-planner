@@ -530,6 +530,87 @@ def _render_quickstart():
                 )
 
 
+def _cafeteria_lunch_summary(menu: dict) -> str:
+    sections = menu.get("sections") or []
+    priority = ("Meat or Fish", "Green Vibes", "Nomad", "Soup")
+    for preferred in priority:
+        section = next(
+            (s for s in sections
+             if preferred.lower() in str(s.get("title", "")).lower()),
+            None,
+        )
+        if section and section.get("items"):
+            return f"{section['title']}: {section['items'][0]}"
+
+    if sections and sections[0].get("items"):
+        return f"{sections[0]['title']}: {sections[0]['items'][0]}"
+    return "check today's cafeteria options before scheduling long blocks."
+
+
+def _weekly_cafeteria_html(days: list[dict]) -> str:
+    cards = []
+    for day in days:
+        rows = []
+        for section in day.get("sections", []):
+            items = section.get("items") or []
+            if not items:
+                continue
+            rows.append(
+                '<div class="nova-menu-row">'
+                f'<span>{h(section.get("title") or "Menu")}</span>'
+                f'<p>{h(" / ".join(items))}</p>'
+                '</div>'
+            )
+        if rows:
+            cards.append(
+                '<section class="nova-menu-day">'
+                f'<h4>{h(day.get("date_label") or "Menu")}</h4>'
+                f'{"".join(rows)}'
+                '</section>'
+            )
+    return f'<div class="nova-weekly-menu">{"".join(cards)}</div>'
+
+
+def page_cafeteria(user: dict):
+    render_page_title(
+        "Cafeteria",
+        "Nova SBE lunch menus from MON BISTRO.",
+        "lunch",
+    )
+
+    daily = api.get_daily_cafeteria_menu()
+    weekly = api.get_weekly_cafeteria_menu()
+    if not daily.get("ok") and not weekly.get("ok"):
+        st.info("Cafeteria menu is unavailable right now.")
+        st.caption("Source: monbistrot.pt")
+        return
+
+    if daily.get("ok"):
+        st.markdown(
+            f'<div class="nova-lunch-line">'
+            f'<strong>Today:</strong> {h(_cafeteria_lunch_summary(daily))}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"{daily.get('unit_name', 'NOVA SBE')} - "
+            f"{daily.get('date_label', '')}"
+        )
+    else:
+        st.info("Today's cafeteria menu is unavailable right now.")
+
+    st.divider()
+    st.subheader("Weekly Menu")
+    if not weekly.get("ok"):
+        st.info("Weekly cafeteria menu is unavailable right now.")
+        return
+
+    st.caption(f"{weekly.get('unit_name', 'NOVA SBE')} - "
+               f"{weekly.get('week_label', '')}")
+    st.markdown(_weekly_cafeteria_html(weekly.get("days", [])),
+                unsafe_allow_html=True)
+
+
 def page_courses(user: dict):
     render_page_title(
         "Courses & Constraints",
@@ -1608,6 +1689,7 @@ PAGES = [
     ("Dashboard", page_dashboard),
     ("Courses", page_courses),
     ("Study Plan", page_study_plan),
+    ("Cafeteria", page_cafeteria),
     ("Customize", page_customize),
     ("Analytics", page_analytics),
     ("Study Mode", page_study_mode),

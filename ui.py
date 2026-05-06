@@ -377,6 +377,64 @@ button[kind="primaryFormSubmit"] *,
     font-weight: 800;
 }
 
+.nova-lunch-line {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--ink);
+    font-size: 1.05rem;
+    line-height: 1.45;
+    padding: 0.9rem 1.05rem;
+    margin-bottom: 0.45rem;
+}
+
+.nova-weekly-menu {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+    margin-top: 0.75rem;
+}
+
+.nova-menu-day {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.8rem 0.9rem 0.7rem;
+}
+
+.nova-menu-day h4 {
+    color: var(--ink);
+    font-size: 0.98rem;
+    line-height: 1.2;
+    margin: 0 0 0.55rem;
+}
+
+.nova-menu-row {
+    border-top: 1px solid var(--line);
+    padding: 0.45rem 0 0.05rem;
+}
+
+.nova-menu-row:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.nova-menu-row span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin-bottom: 0.08rem;
+    text-transform: uppercase;
+}
+
+.nova-menu-row p {
+    color: var(--ink);
+    font-size: 0.9rem;
+    line-height: 1.35;
+    margin: 0;
+}
+
 [class*="st-key-quickstart_actions"] {
     margin-top: 0.9rem;
 }

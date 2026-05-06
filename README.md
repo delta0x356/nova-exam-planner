@@ -2,7 +2,8 @@
 
 Nova Exam Planner is a Streamlit app for planning study sessions around exam dates.
 It supports multiple users, stores data in SQLite, can skip public holidays, and
-exports the generated plan as CSV or calendar events.
+exports the generated plan as CSV or calendar events. It also shows the Nova SBE
+cafeteria menu for the week.
 
 ## Run
 
@@ -20,7 +21,7 @@ app.py            Streamlit pages and UI
 auth.py           Registration, login, password hashing
 database.py       SQLite tables and CRUD helpers
 scheduler.py      Study-plan generation and analytics helpers
-api_client.py     Public holidays and country-list API helpers
+api_client.py     Public holidays, country-list, and cafeteria API helpers
 requirements.txt  Python dependencies
 ```
 
@@ -40,10 +41,6 @@ All course, constraint, and session rows are scoped by `user_id`.
 - Generate a balanced study plan before each exam
 - Track completed sessions and redistribute missed study time
 - Review weekly calendar, progress charts, and per-course totals
+- Check the current Nova SBE cafeteria weekly menu
 - Use a simple focus timer and log study minutes
 - Import/export courses and export the plan as CSV or ICS
-
-## Submission Notes
-
-Do not include generated folders such as `__pycache__`, `data`, `.venv`, or
-`backups` in the final zip. The database is local runtime data, not source code.
