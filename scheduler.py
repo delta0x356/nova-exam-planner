@@ -10,6 +10,9 @@ DAY_NAMES = [
     "Friday", "Saturday", "Sunday",
 ]
 
+BLOCK_MINUTES = 45
+ROUNDING_MINUTES = 5
+
 
 def _available_days(start: dt.date, end: dt.date,
                     preferred: set[str],
@@ -34,45 +37,57 @@ def _floor_to_5(minutes: float) -> int:
     return max(0, int(minutes // 5) * 5)
 
 
-def _trim_items_to_cap(items: dict, cap: float) -> dict:
-    """Trim values to a cap in 5-minute blocks."""
-    total = sum(items.values())
-    if total <= cap:
-        return dict(items)
-
-    scale = cap / total if total else 0
-    trimmed = {key: _floor_to_5(value * scale)
-               for key, value in items.items()}
-
-    # Put spare blocks back where trimming hurt most.
-    spare = _floor_to_5(cap - sum(trimmed.values()))
-    candidates = sorted(
-        items,
-        key=lambda key: items[key] - trimmed[key],
-        reverse=True,
-    )
-    for key in candidates:
-        if spare < 5:
-            break
-        if trimmed[key] + 5 <= items[key]:
-            trimmed[key] += 5
-            spare -= 5
-
-    return trimmed
+def _round_to_5(minutes: float) -> int:
+    return max(0, int(round(minutes / ROUNDING_MINUTES) * ROUNDING_MINUTES))
 
 
-def _used_on_day(course_allocs: dict[int, dict], day: dt.date) -> float:
-    return sum(v["alloc"].get(day, 0) for v in course_allocs.values())
+def _split_into_blocks(total_minutes: float) -> list[int]:
+    """Make near-45 minute sessions without losing the target total."""
+    total = _round_to_5(total_minutes)
+    if total <= 0:
+        return []
+
+    block_count = max(1, round(total / BLOCK_MINUTES))
+    base = max(ROUNDING_MINUTES, _floor_to_5(total / block_count))
+    blocks = [base for _ in range(block_count)]
+
+    spare = total - sum(blocks)
+    i = 0
+    while spare >= ROUNDING_MINUTES:
+        blocks[i % block_count] += ROUNDING_MINUTES
+        spare -= ROUNDING_MINUTES
+        i += 1
+
+    return blocks
 
 
-def _used_in_week(course_allocs: dict[int, dict], day: dt.date) -> float:
-    week = _week_start(day)
-    return sum(
-        mins
-        for v in course_allocs.values()
-        for d, mins in v["alloc"].items()
-        if _week_start(d) == week
-    )
+def _target_index(day_count: int, block_index: int,
+                  block_count: int) -> int:
+    if day_count <= 1:
+        return 0
+    if block_count <= 1:
+        return day_count // 2
+    return round(block_index * (day_count - 1) / (block_count - 1))
+
+
+def _nearby_indices(day_count: int, target: int):
+    yield target
+    for offset in range(1, day_count):
+        left = target - offset
+        right = target + offset
+        if left >= 0:
+            yield left
+        if right < day_count:
+            yield right
+
+
+def _room_on(day: dt.date, day_used: dict, week_used: dict,
+             max_daily: int, max_weekly: Optional[float]) -> float:
+    daily_room = max_daily - day_used.get(day, 0)
+    if max_weekly is None:
+        return daily_room
+    weekly_room = max_weekly - week_used.get(_week_start(day), 0)
+    return min(daily_room, weekly_room)
 
 
 def generate_study_plan(courses: list[dict], *,
@@ -91,81 +106,45 @@ def generate_study_plan(courses: list[dict], *,
     max_weekly = weekly_hours * 60 if weekly_hours else None
     exclude = set(exclude_dates) if exclude_dates else set()
 
-    # First pass: spread each course across its study days.
+    day_used: dict[dt.date, int] = {}
+    week_used: dict[dt.date, int] = {}
     course_allocs: dict[int, dict] = {}
-    for c in courses:
-        total = c["estimated_hours"] * 60
+
+    ordered_courses = sorted(courses, key=lambda c: c["exam_date"])
+    for c in ordered_courses:
         exam_d = c["exam_date"]
         if isinstance(exam_d, str):
             exam_d = dt.date.fromisoformat(exam_d)
-        avail = _available_days(start_date, exam_d, preferred, exclude)
-        if not avail:
+        course_start = c.get("study_start_date", start_date)
+        if isinstance(course_start, str):
+            course_start = dt.date.fromisoformat(course_start)
+        course_start = max(start_date, course_start)
+        avail = _available_days(course_start, exam_d, preferred, exclude)
+
+        blocks = _split_into_blocks(c["estimated_hours"] * 60)
+        if not avail or not blocks:
             continue
-        daily = total / len(avail)
-        daily = round(daily / 5) * 5
-        if daily < 5 and total >= 5:
-            daily = 5
+
+        alloc: dict[dt.date, int] = {}
+        for block_index, minutes in enumerate(blocks):
+            target = _target_index(len(avail), block_index, len(blocks))
+            for day_index in _nearby_indices(len(avail), target):
+                day = avail[day_index]
+                if _room_on(day, day_used, week_used,
+                            max_daily, max_weekly) < minutes:
+                    continue
+
+                alloc[day] = alloc.get(day, 0) + minutes
+                day_used[day] = day_used.get(day, 0) + minutes
+                week = _week_start(day)
+                week_used[week] = week_used.get(week, 0) + minutes
+                break
+
         course_allocs[c["id"]] = {
             "name": c["name"],
             "exam_date": exam_d,
-            "alloc": {d: daily for d in avail},
+            "alloc": alloc,
         }
-
-    # Trim anything that breaks daily or weekly limits.
-    all_days = sorted({d for v in course_allocs.values() for d in v["alloc"]})
-    overflow = {cid: 0 for cid in course_allocs}
-
-    for day in all_days:
-        items = {cid: v["alloc"][day] for cid, v in course_allocs.items()
-                 if v["alloc"].get(day, 0) > 0}
-        day_total = sum(items.values())
-        if day_total <= max_daily:
-            continue
-        trimmed_items = _trim_items_to_cap(items, max_daily)
-        for cid, val in items.items():
-            trimmed = trimmed_items[cid]
-            course_allocs[cid]["alloc"][day] = trimmed
-            overflow[cid] += val - trimmed
-
-    if max_weekly:
-        all_weeks = sorted({_week_start(day) for day in all_days})
-        for week in all_weeks:
-            items = {
-                (cid, day): mins
-                for cid, v in course_allocs.items()
-                for day, mins in v["alloc"].items()
-                if _week_start(day) == week and mins > 0
-            }
-            week_total = sum(items.values())
-            if week_total <= max_weekly:
-                continue
-            trimmed_items = _trim_items_to_cap(items, max_weekly)
-            for (cid, day), val in items.items():
-                trimmed = trimmed_items[(cid, day)]
-                course_allocs[cid]["alloc"][day] = trimmed
-                overflow[cid] += val - trimmed
-
-    # Put overflow back where there is still room.
-    ordered = sorted(course_allocs.items(), key=lambda kv: kv[1]["exam_date"])
-    for cid, v in ordered:
-        remaining = overflow[cid]
-        if remaining <= 0:
-            continue
-        avail = _available_days(start_date, v["exam_date"], preferred, exclude)
-        for day in avail:
-            if remaining <= 0:
-                break
-            daily_headroom = max_daily - _used_on_day(course_allocs, day)
-            weekly_headroom = (max_weekly - _used_in_week(course_allocs, day)
-                               if max_weekly else daily_headroom)
-            headroom = min(daily_headroom, weekly_headroom)
-            if headroom <= 0:
-                continue
-            add = _floor_to_5(min(remaining, headroom))
-            if add <= 0:
-                continue
-            v["alloc"][day] = v["alloc"].get(day, 0) + add
-            remaining -= add
 
     sessions: list[dict] = []
     for cid, v in course_allocs.items():
@@ -179,6 +158,7 @@ def generate_study_plan(courses: list[dict], *,
                     "completed_minutes": 0,
                 })
     return sessions
+
 
 def rebalance_course_sessions(sessions_df: pd.DataFrame,
                               course_id: int,

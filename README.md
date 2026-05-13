@@ -22,6 +22,7 @@ auth.py           Registration, login, password hashing
 database.py       SQLite tables and CRUD helpers
 scheduler.py      Study-plan generation and analytics helpers
 api_client.py     Public holidays, country-list, and cafeteria API helpers
+subject_catalog.py Built-in Nova subject lists
 requirements.txt  Python dependencies
 ```
 
@@ -37,7 +38,8 @@ All course, constraint, and session rows are scoped by `user_id`.
 ## Features
 
 - Register and log in with local accounts
-- Add courses and study constraints
+- Add courses manually or from Nova subject lists
+- Estimate study time from ECTS and Low/Medium/High difficulty
 - Generate a balanced study plan before each exam
 - Track completed sessions and redistribute missed study time
 - Review weekly calendar, progress charts, and per-course totals

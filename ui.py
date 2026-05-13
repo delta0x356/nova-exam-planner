@@ -19,9 +19,9 @@ CUSTOM_CSS = """
     --danger: #111111;
     --soft: #f1f1ef;
     --soft-2: #e8e8e6;
-    --radius-lg: 26px;
-    --radius-md: 18px;
-    --shadow: 0 20px 50px rgba(17, 17, 17, 0.08);
+    --radius-lg: 12px;
+    --radius-md: 8px;
+    --shadow: 0 8px 22px rgba(17, 17, 17, 0.045);
 }
 
 .stApp {
@@ -33,15 +33,27 @@ header[data-testid="stHeader"] {
     background: var(--paper);
 }
 
+.stDeployButton {
+    display: none !important;
+}
+
 .main .block-container {
-    max-width: 1180px;
-    padding-top: 1.4rem;
-    padding-bottom: 3rem;
+    max-width: 1040px;
+    padding-top: 0.55rem;
+    padding-bottom: 1.6rem;
+}
+
+.main .block-container [data-testid="stVerticalBlock"] {
+    gap: 0.42rem;
 }
 
 h1, h2, h3 {
     color: var(--ink);
     letter-spacing: 0;
+}
+
+a[aria-label="Link to heading"] {
+    display: none !important;
 }
 
 p, li, label, span {
@@ -66,8 +78,14 @@ div[data-testid="stMetric"] {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    padding: 1rem 1.1rem;
-    box-shadow: 0 10px 25px rgba(17, 17, 17, 0.04);
+    padding: 0.6rem 0.7rem;
+    box-shadow: none;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: var(--line) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 0.75rem !important;
 }
 
 code {
@@ -108,8 +126,15 @@ textarea,
 input {
     background: #ffffff !important;
     border-color: var(--line) !important;
-    border-radius: 14px !important;
+    border-radius: 10px !important;
     color: var(--ink) !important;
+}
+
+.stTextInput input,
+.stNumberInput input,
+.stDateInput input,
+[data-baseweb="select"] > div {
+    min-height: 2.45rem !important;
 }
 
 input::placeholder,
@@ -130,7 +155,7 @@ textarea:focus {
 [data-baseweb="textarea"],
 [data-baseweb="base-input"] {
     background: #ffffff !important;
-    border-radius: 14px !important;
+    border-radius: 10px !important;
 }
 
 [data-baseweb="tab-highlight"] {
@@ -140,11 +165,12 @@ textarea:focus {
 .stButton > button,
 [data-testid="stFormSubmitButton"] button {
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     background: var(--panel);
     color: var(--ink);
     font-weight: 700;
-    box-shadow: 0 8px 18px rgba(17, 17, 17, 0.05);
+    min-height: 2.25rem;
+    box-shadow: none;
 }
 
 .stButton > button:hover,
@@ -197,12 +223,21 @@ button[kind="primaryFormSubmit"] *,
 }
 
 .nova-page-title {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0.15rem 0 0.55rem;
+    margin-bottom: 0.55rem;
+}
+
+.nova-page-title.with-logo {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
-    padding: 1.5rem 1.6rem 1.65rem;
-    margin-bottom: 1.2rem;
+    padding: 0.78rem 0.9rem 0.85rem;
 }
 
 .nova-title-row {
@@ -213,14 +248,14 @@ button[kind="primaryFormSubmit"] *,
 
 .nova-title-logo {
     flex: 0 0 auto;
-    width: 96px;
-    min-height: 62px;
-    border-radius: 18px;
+    width: 68px;
+    min-height: 42px;
+    border-radius: var(--radius-md);
     background: var(--ink);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.7rem;
+    padding: 0.55rem;
 }
 
 .nova-title-logo img {
@@ -235,40 +270,40 @@ button[kind="primaryFormSubmit"] *,
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--muted);
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.25rem;
 }
 
 .nova-page-title h1 {
     margin: 0;
-    font-size: clamp(2rem, 4vw, 3.25rem);
-    line-height: 0.95;
+    font-size: 1.65rem;
+    line-height: 1.05;
     font-weight: 900;
 }
 
 .nova-page-title p {
-    margin: 0.35rem 0 0;
+    margin: 0.25rem 0 0;
     color: var(--muted);
 }
 
 .nova-sidebar-logo {
     background: var(--ink);
     border: 1px solid var(--ink);
-    border-radius: 18px;
-    padding: 0.9rem 0.85rem;
-    margin: 0.25rem 0 1.1rem;
-    box-shadow: 0 14px 34px rgba(17, 17, 17, 0.1);
+    border-radius: var(--radius-md);
+    padding: 0.6rem;
+    margin: 0.1rem 0 0.75rem;
+    box-shadow: none;
 }
 
 .nova-sidebar-logo img {
     display: block;
-    width: min(132px, 100%);
+    width: min(118px, 100%);
     height: auto;
 }
 
 .nova-sidebar-meta {
     border-bottom: 1px solid var(--line);
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
 }
 
 .nova-sidebar-meta .hello {
@@ -284,9 +319,9 @@ button[kind="primaryFormSubmit"] *,
 }
 
 [data-testid="stSidebar"] [data-testid="stRadio"] label {
-    min-height: 2.35rem;
+    min-height: 2.05rem;
     border-bottom: 1px solid var(--line);
-    padding: 0.3rem 0;
+    padding: 0.18rem 0;
 }
 
 [data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child {
@@ -306,29 +341,6 @@ button[kind="primaryFormSubmit"] *,
     text-underline-offset: 0.25rem;
 }
 
-.nova-task {
-    border: 1px solid var(--line);
-    border-left: 4px solid var(--accent);
-    border-radius: 16px;
-    padding: 0.7rem 0.85rem;
-    margin-bottom: 0.45rem;
-    background: var(--panel);
-}
-
-.nova-task.done {
-    border-left-color: var(--success);
-    background: #f0f0f0;
-}
-
-.nova-task .t-title {
-    font-weight: 800;
-}
-
-.nova-task .t-meta {
-    font-size: 0.85rem;
-    color: var(--muted);
-}
-
 .nova-chip {
     display: inline-block;
     padding: 0.2rem 0.55rem;
@@ -345,11 +357,11 @@ button[kind="primaryFormSubmit"] *,
 
 .calendar-day {
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--panel);
-    padding: 0.5rem 0.25rem;
+    padding: 0.4rem 0.2rem;
     text-align: center;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
 }
 
 .calendar-day.today {
@@ -360,10 +372,387 @@ button[kind="primaryFormSubmit"] *,
 .mini-session {
     border-left: 3px solid var(--accent);
     background: #f8f8f8;
-    border-radius: 12px;
-    padding: 0.25rem 0.45rem;
-    margin: 0.25rem 0;
+    border-radius: 9px;
+    padding: 0.22rem 0.38rem;
+    margin: 0.18rem 0;
+    font-size: 0.78rem;
+}
+
+.nova-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin: 0.55rem 0 0.75rem;
+}
+
+.nova-metric {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.62rem 0.7rem;
+}
+
+.nova-metric span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.nova-metric strong {
+    display: block;
+    font-size: 1.45rem;
+    line-height: 1.15;
+    margin-top: 0.15rem;
+}
+
+.nova-metric small {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    margin-top: 0.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nova-today-strip,
+.nova-day-summary {
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin: 0.45rem 0 0.6rem;
+    padding: 0.62rem 0.75rem;
+}
+
+.simple-section-title {
+    align-items: baseline;
+    display: flex;
+    gap: 0.55rem;
+    justify-content: space-between;
+    margin: 0.45rem 0 0.25rem;
+}
+
+.simple-section-title h3 {
+    font-size: 1.15rem;
+    margin: 0;
+}
+
+.simple-section-title span {
+    color: var(--muted);
     font-size: 0.82rem;
+}
+
+.nova-today-strip strong,
+.nova-day-summary strong {
+    display: block;
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+.nova-today-strip span,
+.nova-day-summary span {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.course-line {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr);
+    gap: 0.7rem;
+    margin-bottom: 0.28rem;
+    padding: 0.62rem 0.7rem;
+}
+
+.course-line strong {
+    display: block;
+    font-size: 0.98rem;
+    line-height: 1.22;
+}
+
+.course-line small {
+    color: var(--muted);
+    display: block;
+    font-size: 0.76rem;
+    margin-top: 0.12rem;
+}
+
+.course-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    justify-content: flex-end;
+}
+
+.course-meta span {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink);
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+}
+
+.study-row-title strong {
+    display: block;
+    font-size: 0.96rem;
+    line-height: 1.2;
+}
+
+.study-row-title span,
+.study-row-time span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.08rem;
+}
+
+.study-row-time strong {
+    display: block;
+    font-size: 0.98rem;
+}
+
+[class*="st-key-course_item_"] {
+    margin-bottom: 0.28rem;
+}
+
+[class*="st-key-course_item_"] [data-testid="stHorizontalBlock"],
+[class*="st-key-study_day_"] [data-testid="stHorizontalBlock"],
+[class*="st-key-dashboard_"] [data-testid="stHorizontalBlock"] {
+    align-items: center;
+}
+
+[class*="st-key-course_item_"] [data-testid="stButton"] button {
+    width: 100%;
+}
+
+[class*="st-key-study_day_"],
+[class*="st-key-dashboard_"] {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin-bottom: 0.38rem;
+    padding: 0.2rem 0.62rem;
+    transition: background 120ms ease, border-color 120ms ease,
+        opacity 120ms ease;
+}
+
+[data-testid="stExpander"] details {
+    background: var(--panel);
+    border-color: var(--line) !important;
+    border-radius: var(--radius-md) !important;
+}
+
+[data-testid="stExpander"] summary {
+    min-height: 2.4rem;
+}
+
+[data-testid="stExpander"] summary p {
+    font-size: 0.94rem;
+    font-weight: 750;
+}
+
+[class*="st-key-study_day_"] [data-testid="stCheckbox"] label,
+[class*="st-key-dashboard_"] [data-testid="stCheckbox"] label {
+    min-height: 2.35rem;
+    padding: 0 !important;
+}
+
+[class*="st-key-study_day_"] [data-testid="stCheckbox"] p,
+[class*="st-key-dashboard_"] [data-testid="stCheckbox"] p {
+    color: var(--ink) !important;
+    font-size: 0.9rem;
+    font-weight: 460 !important;
+    line-height: 1.2;
+}
+
+[class*="st-key-study_day_"] [data-testid="stCheckbox"] del,
+[class*="st-key-dashboard_"] [data-testid="stCheckbox"] del {
+    color: var(--muted) !important;
+    font-weight: 400 !important;
+    text-decoration-color: var(--ink);
+    text-decoration-thickness: 1.5px;
+}
+
+[class*="st-key-study_day_"]:has(input:checked),
+[class*="st-key-dashboard_"]:has(input:checked) {
+    background: rgba(255, 255, 255, 0.55);
+    border-color: rgba(17, 17, 17, 0.08);
+}
+
+[class*="st-key-study_day_"]:has(input:checked) [data-testid="stCheckbox"] p,
+[class*="st-key-dashboard_"]:has(input:checked) [data-testid="stCheckbox"] p {
+    color: var(--muted) !important;
+    font-weight: 400 !important;
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    text-decoration-color: var(--ink);
+    text-underline-offset: 0.12rem;
+}
+
+.week-list {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.45rem;
+}
+
+.week-row {
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 4.8rem minmax(0, 1fr) auto;
+    padding: 0.48rem 0.6rem;
+}
+
+.week-row.today {
+    border-color: var(--ink);
+}
+
+.week-row strong {
+    display: block;
+    line-height: 1.15;
+}
+
+.week-row small,
+.week-row span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.78rem;
+    line-height: 1.25;
+}
+
+.week-row em {
+    color: var(--ink);
+    font-style: normal;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.progress-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.progress-row {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.progress-row-head {
+    align-items: baseline;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+}
+
+.progress-row-head strong {
+    font-size: 0.9rem;
+}
+
+.progress-row-head span {
+    color: var(--muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.progress-track {
+    background: #ffffff;
+    border-radius: 999px;
+    height: 0.36rem;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background: var(--ink);
+    border-radius: inherit;
+    height: 100%;
+}
+
+.balance-list {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.balance-row {
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.48rem 0.6rem;
+}
+
+.balance-row strong {
+    display: block;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.balance-row span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.76rem;
+}
+
+.balance-row em {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink);
+    font-size: 0.76rem;
+    font-style: normal;
+    font-weight: 800;
+    padding: 0.16rem 0.48rem;
+    white-space: nowrap;
+}
+
+.balance-row.review em {
+    background: var(--soft);
+}
+
+.focus-summary {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1.5fr 0.8fr 0.7fr 0.6fr;
+    margin: 0.55rem 0 0.45rem;
+}
+
+.focus-summary-cell {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+}
+
+.focus-summary-cell span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.focus-summary-cell strong {
+    display: block;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    margin-top: 0.16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .exam-tag {
@@ -448,13 +837,13 @@ button[kind="primaryFormSubmit"] *,
 }
 
 [class*="st-key-quickstart_actions"] [data-testid="stButton"] button {
-    min-height: 154px;
+    min-height: 118px;
     display: flex !important;
     align-items: flex-start !important;
     justify-content: flex-start !important;
     text-align: left !important;
     white-space: normal !important;
-    padding: 1.3rem 1.45rem;
+    padding: 0.95rem 1rem;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     background: rgba(255, 255, 255, 0.76);
@@ -472,32 +861,101 @@ button[kind="primaryFormSubmit"] *,
 
 [class*="st-key-quickstart_actions"] [data-testid="stButton"] button p {
     color: var(--muted) !important;
-    font-size: 0.98rem;
-    line-height: 1.45;
+    font-size: 0.9rem;
+    line-height: 1.35;
     font-weight: 600;
     white-space: normal !important;
     text-align: left !important;
 }
 
 [class*="st-key-quickstart_actions"] [data-testid="stButton"] button p:first-child {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.45rem;
 }
 
 [class*="st-key-quickstart_actions"] [data-testid="stButton"] button strong {
     color: var(--ink) !important;
-    font-size: clamp(1.3rem, 2vw, 1.75rem);
+    font-size: 1.35rem;
     line-height: 1.05;
     font-weight: 900;
 }
 
 @media (max-width: 900px) {
+    .main .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
     .nova-title-row {
-        flex-direction: column;
-        align-items: flex-start;
+        gap: 0.7rem;
+    }
+
+    .nova-page-title h1 {
+        font-size: 1.55rem;
+    }
+
+    .nova-page-title p {
+        font-size: 0.92rem;
+    }
+
+    .nova-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .focus-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .course-line {
+        grid-template-columns: 1fr;
+        gap: 0.45rem;
+    }
+
+    .course-meta {
+        justify-content: flex-start;
+    }
+
+    .week-row {
+        grid-template-columns: 3.6rem minmax(0, 1fr);
+    }
+
+    .week-row em {
+        grid-column: 2;
+        justify-self: start;
     }
 
     [class*="st-key-quickstart_actions"] [data-testid="stHorizontalBlock"] {
         flex-direction: column;
+    }
+}
+
+@media (max-width: 520px) {
+    .main .block-container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .nova-title-logo {
+        display: none;
+    }
+
+    .nova-metric-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.4rem;
+    }
+
+    .nova-metric strong {
+        font-size: 1.2rem;
+    }
+
+    .focus-summary {
+        gap: 0.4rem;
+    }
+
+    .nova-today-strip,
+    .nova-day-summary {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.25rem;
     }
 }
 </style>
@@ -529,8 +987,9 @@ def render_page_title(title: str, subtitle: str = "", kicker: str = "nova",
         f'<div class="nova-title-logo"><img src="{h(logo_src)}" alt="Nova SBE" /></div>'
         if logo_src else ""
     )
+    klass = "nova-page-title with-logo" if logo_src else "nova-page-title"
     html = (
-        '<div class="nova-page-title">'
+        f'<div class="{klass}">'
         '<div class="nova-title-row">'
         f'{logo_html}'
         '<div>'
@@ -539,24 +998,6 @@ def render_page_title(title: str, subtitle: str = "", kicker: str = "nova",
         f'{subtitle_html}'
         '</div>'
         '</div>'
-        '</div>'
-    )
-    st.markdown(html, unsafe_allow_html=True)
-
-
-def render_task_tile(course_name: str, planned_minutes: int,
-                     completed_minutes: int = 0, color: str = "#111111"):
-    done = completed_minutes >= planned_minutes > 0
-    klass = "nova-task done" if done else "nova-task"
-    status = "Done" if done else "Planned"
-    completed = (
-        f" / {fmt_minutes(completed_minutes)} completed"
-        if completed_minutes else ""
-    )
-    html = (
-        f'<div class="{klass}" style="border-left-color:{h(color)};">'
-        f'<div class="t-title">{h(course_name)}</div>'
-        f'<div class="t-meta">{status}: {fmt_minutes(planned_minutes)}{completed}</div>'
         '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)

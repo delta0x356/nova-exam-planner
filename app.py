@@ -14,13 +14,13 @@ import streamlit as st
 import database as db
 import auth
 import api_client as api
+import subject_catalog as catalog
 from ui import (
     apply_theme,
     fmt_hours,
     fmt_minutes,
     h,
     render_page_title,
-    render_task_tile,
 )
 from scheduler import (
     DAY_NAMES,
@@ -40,9 +40,117 @@ COURSE_COLORS = [
     "#222222", "#444444", "#666666", "#888888", "#aaaaaa",
 ]
 
+STUDY_HOURS_PER_ECTS = 3.0
+DEFAULT_FOCUS_MINUTES = 45
+DIFFICULTY_MULTIPLIERS = {
+    "Low": 0.8,
+    "Medium": 1.0,
+    "High": 1.2,
+}
+DIFFICULTY_VALUES = {
+    "Low": 1,
+    "Medium": 3,
+    "High": 5,
+}
+DIFFICULTY_LABELS = tuple(DIFFICULTY_MULTIPLIERS)
+SEMESTERS = ("Fall", "Spring")
+FALL_PERIODS = {"Fall", "S1", "T1", "T2"}
+SPRING_PERIODS = {"Spring", "S2", "T3", "T4"}
+SEMESTER_START_ESTIMATES = {
+    "Fall": (9, 1),
+    "Spring": (2, 1),
+}
+SEMESTER_EXAM_ESTIMATES = {
+    "Fall": (12, 15),
+    "Spring": (6, 15),
+}
+PERIOD_EXAM_ESTIMATES = {
+    "T1": (10, 31),
+    "Fall": (12, 15),
+    "S1": (12, 15),
+    "T2": (12, 15),
+    "T3": (3, 31),
+    "Spring": (6, 15),
+    "S2": (6, 15),
+    "T4": (6, 15),
+    "A": (6, 15),
+}
+
+
+def difficulty_label(value: int) -> str:
+    if value <= 2:
+        return "Low"
+    if value >= 4:
+        return "High"
+    return "Medium"
+
+
+def difficulty_value(value) -> int:
+    label = str(value).strip().title()
+    if label in DIFFICULTY_VALUES:
+        return DIFFICULTY_VALUES[label]
+    try:
+        return DIFFICULTY_VALUES[difficulty_label(int(value))]
+    except (TypeError, ValueError):
+        return DIFFICULTY_VALUES["Medium"]
+
 
 def estimate_hours(ects: float, difficulty: int) -> float:
-    return round(ects * (1.5 + 0.5 * difficulty), 1)
+    multiplier = DIFFICULTY_MULTIPLIERS[difficulty_label(difficulty)]
+    return round(ects * STUDY_HOURS_PER_ECTS * multiplier, 1)
+
+
+def default_exam_date(period: str, today: Optional[dt.date] = None) -> dt.date:
+    today = today or dt.date.today()
+    month, day = PERIOD_EXAM_ESTIMATES.get(period, (6, 15))
+    candidate = dt.date(today.year, month, day)
+    if candidate < today:
+        candidate = dt.date(today.year + 1, month, day)
+    return candidate
+
+
+def period_semester(period: str) -> str:
+    if period in FALL_PERIODS or period == "A":
+        return "Fall"
+    if period in SPRING_PERIODS:
+        return "Spring"
+    return "Spring"
+
+
+def default_exam_date_for_semester(semester: str,
+                                   today: Optional[dt.date] = None) -> dt.date:
+    today = today or dt.date.today()
+    month, day = SEMESTER_EXAM_ESTIMATES[semester]
+    candidate = dt.date(today.year, month, day)
+    if candidate < today:
+        candidate = dt.date(today.year + 1, month, day)
+    return candidate
+
+
+def semester_start_date(semester: str, exam_date: dt.date) -> dt.date:
+    month, day = SEMESTER_START_ESTIMATES[semester]
+    year = exam_date.year if semester == "Fall" else exam_date.year
+    return dt.date(year, month, day)
+
+
+def semester_from_exam_date(exam_date: dt.date) -> str:
+    return "Fall" if exam_date.month >= 8 else "Spring"
+
+
+def course_study_start(course: dict, today: Optional[dt.date] = None) -> dt.date:
+    today = today or dt.date.today()
+    semester = semester_from_exam_date(course["exam_date"])
+    return max(today, semester_start_date(semester, course["exam_date"]))
+
+
+def semester_label(period: str, exam_date: dt.date) -> str:
+    if period in FALL_PERIODS:
+        return f"Fall {exam_date.year}"
+    if period in SPRING_PERIODS:
+        return f"Spring {exam_date.year}"
+    if period == "A":
+        return f"Academic year {exam_date.year - 1}/{exam_date.year}"
+    return f"Next sitting {exam_date.year}"
 
 
 def unique_course_name(base_name: str, existing_names: list[str]) -> str:
@@ -62,6 +170,446 @@ def course_color(name: str, all_names: list[str]) -> str:
     sorted_names = sorted(set(all_names))
     idx = sorted_names.index(name) if name in sorted_names else 0
     return COURSE_COLORS[idx % len(COURSE_COLORS)]
+
+
+def fmt_task_minutes(minutes: float) -> str:
+    minutes = max(0, round(minutes))
+    if minutes < 60:
+        return f"{minutes} min"
+    return fmt_minutes(minutes)
+
+
+def _render_subject_loader(user: dict, existing_courses: list[dict]):
+    st.subheader("Add course")
+    with st.container(border=True):
+        group_labels = {
+            "mandatory": "Mandatory",
+            "finance_elective": "Finance electives",
+            "other_elective": "Other electives",
+            "custom": "Custom course",
+        }
+        group_order = (*catalog.GROUP_ORDER, "custom")
+        label_to_group = {group_labels[group]: group for group in group_order}
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            group_label = st.selectbox(
+                "Course list",
+                list(label_to_group),
+                key="subject_loader_group",
+            )
+
+        group = label_to_group[group_label]
+        program = catalog.PROGRAMS[0]
+        if group != "custom":
+            with c2:
+                program = st.selectbox(
+                    "Degree",
+                    catalog.PROGRAMS,
+                    key="subject_loader_program",
+                )
+        with c3:
+            selected_semester = st.selectbox(
+                "Semester",
+                SEMESTERS,
+                format_func=lambda value: f"{value} semester",
+                key="subject_loader_semester",
+            )
+        existing_names = [
+            course["name"].strip()
+            for course in existing_courses
+        ]
+
+        if group == "custom":
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input(
+                    "Course name",
+                    key="custom_course_name",
+                )
+                ects = st.number_input(
+                    "ECTS",
+                    0.5,
+                    30.0,
+                    6.0,
+                    step=0.5,
+                    format="%.1f",
+                    key="custom_course_ects",
+                )
+            with c2:
+                exam_date = st.date_input(
+                    "Exam date",
+                    default_exam_date_for_semester(selected_semester),
+                    key=f"custom_course_exam_{selected_semester}",
+                )
+                diff_label = st.selectbox(
+                    "Difficulty",
+                    DIFFICULTY_LABELS,
+                    index=1,
+                    key="custom_course_difficulty",
+                )
+
+            difficulty = DIFFICULTY_VALUES[diff_label]
+            estimated = estimate_hours(ects, difficulty)
+
+            if st.button("Add custom course",
+                         use_container_width=True, type="primary"):
+                if not name.strip():
+                    st.warning("Enter a course name.")
+                    return
+                final_name = unique_course_name(name, existing_names)
+                db.upsert_course(
+                    user["id"],
+                    final_name,
+                    exam_date,
+                    ects,
+                    difficulty,
+                    estimated,
+                )
+                st.toast(f"Added {final_name}.")
+                st.rerun()
+            return
+
+        subjects = [
+            subject for subject in catalog.subjects_for(program, [group])
+            if period_semester(subject["period"]) == selected_semester
+        ]
+        subjects.sort(key=lambda subject: (
+            catalog.period_sort_key(subject["period"]),
+            subject["name"],
+        ))
+        if not subjects:
+            st.info("No courses found for this semester.")
+            return
+
+        subjects_by_key = {
+            catalog.subject_key(subject): subject
+            for subject in subjects
+        }
+        subject_keys = list(subjects_by_key)
+        course_options = subject_keys
+        subject_key = f"subject_loader_subject_{group}_{selected_semester}"
+        pending_subject = st.session_state.pop(
+            "subject_loader_next_subject", None)
+        if pending_subject in course_options:
+            st.session_state[subject_key] = pending_subject
+        if st.session_state.get(subject_key) not in course_options:
+            st.session_state[subject_key] = subject_keys[0]
+
+        selected_key = st.selectbox(
+            "Course",
+            course_options,
+            format_func=lambda key: catalog.subject_label(subjects_by_key[key]),
+            key=subject_key,
+        )
+
+        subject = subjects_by_key[selected_key]
+        course_name = catalog.course_name(subject)
+        base_lower = course_name.strip().lower()
+        name_lower = subject["name"].strip().lower()
+        attempts = sum(
+            1 for name in existing_names
+            if name.lower() == base_lower
+            or name.lower().startswith(f"{base_lower} (")
+            or name.lower() == name_lower
+        )
+
+        today = dt.date.today()
+        exam_default = default_exam_date_for_semester(selected_semester, today)
+        semester = f"{selected_semester} {exam_default.year}"
+        st.caption(
+            f"{subject['ects']:g} ECTS - {subject['period']} - {semester}"
+        )
+        if attempts:
+            st.caption(
+                f"Already added {attempts} time"
+                f"{'s' if attempts != 1 else ''}. Add again for a retake."
+            )
+
+        d1, d2 = st.columns(2)
+        with d1:
+            exam_date = st.date_input(
+                "Exam date",
+                exam_default,
+                key=f"subject_loader_exam_{selected_key}_{selected_semester}",
+            )
+        with d2:
+            diff_label = st.selectbox(
+                "Difficulty",
+                DIFFICULTY_LABELS,
+                index=1,
+                key=f"subject_loader_difficulty_{selected_key}",
+            )
+
+        difficulty = DIFFICULTY_VALUES[diff_label]
+        estimated = estimate_hours(subject["ects"], difficulty)
+
+        label = "Add another attempt" if attempts else "Add subject"
+        if st.button(label, use_container_width=True, type="primary"):
+            final_name = unique_course_name(course_name, existing_names)
+            db.upsert_course(
+                user["id"],
+                final_name,
+                exam_date,
+                subject["ects"],
+                difficulty,
+                estimated,
+            )
+            idx = subject_keys.index(selected_key)
+            st.session_state["subject_loader_next_subject"] = (
+                subject_keys[(idx + 1) % len(subject_keys)]
+            )
+            st.toast(f"Added {final_name}.")
+            st.rerun()
+
+
+def _render_study_settings(user: dict):
+    con = db.get_constraints(user["id"])
+    default_start = max(con["start_date"], dt.date.today())
+
+    with st.expander("Study settings", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            weekly_hours = st.number_input(
+                "Weekly study hours", 1, 80, int(con["weekly_hours"]))
+        with c2:
+            max_daily = st.number_input(
+                "Max hours / day", 1, 16, int(con["max_hours_per_day"]))
+        with c3:
+            start_date = st.date_input(
+                "Plan start date", default_start)
+
+        preferred_days = st.multiselect(
+            "Preferred study days",
+            DAY_NAMES,
+            default=con["preferred_days"] or DAY_NAMES,
+        )
+        if not preferred_days:
+            st.warning("Select at least one study day.")
+            preferred_days = list(DAY_NAMES)
+
+        c4, c5 = st.columns([2, 1])
+        with c4:
+            skip_holidays = st.checkbox(
+                f"Skip public holidays ({user['country_code']})",
+                value=bool(con["skip_holidays"]),
+                help="Fetches holidays from date.nager.at and excludes them "
+                     "from the schedule.",
+            )
+        with c5:
+            if st.button("Save settings", use_container_width=True):
+                db.save_constraints(
+                    user["id"],
+                    weekly_hours=weekly_hours,
+                    preferred_days=preferred_days,
+                    max_hours_per_day=max_daily,
+                    start_date=start_date,
+                    skip_holidays=skip_holidays,
+                )
+                st.toast("Settings saved.")
+
+        if skip_holidays:
+            with st.expander("Upcoming public holidays"):
+                years = sorted({start_date.year, start_date.year + 1})
+                holidays = api.get_holidays_detailed(
+                    user["country_code"], years)
+                future = [
+                    h for h in holidays
+                    if h["date"] >= dt.date.today()
+                ][:12]
+                if not future:
+                    st.caption("No upcoming holidays found.")
+                else:
+                    for h in future:
+                        st.markdown(
+                            f"- **{h['date']:%d %b %Y}** - "
+                            f"{h['local_name']} ({h['name']})")
+
+    return weekly_hours, max_daily, start_date, preferred_days, skip_holidays
+
+
+def _session_done(row: pd.Series) -> bool:
+    planned = int(row["planned_minutes"])
+    completed = int(row["completed_minutes"])
+    return planned > 0 and completed >= planned
+
+
+def _render_session_card(user_id: int, row: pd.Series, key_prefix: str):
+    planned = int(row["planned_minutes"])
+    completed = int(row["completed_minutes"])
+    remaining = max(0, planned - completed)
+    done = _session_done(row)
+
+    with st.container(key=f"{key_prefix}_{int(row['id'])}"):
+        label = f"{row['course_name']} - {fmt_task_minutes(planned)}"
+        if completed and not done:
+            label += f" - {fmt_task_minutes(remaining)} left"
+        if done:
+            label = f":gray[~~{label}~~]"
+        key = f"task_done_{key_prefix}_{int(row['id'])}"
+        checked = st.checkbox(label, value=done, key=key)
+        if checked != done:
+            db.update_session_completed(
+                user_id, int(row["id"]), planned if checked else 0)
+            st.toast("Session marked done." if checked else "Session reopened.")
+            st.rerun()
+
+
+def _metric_grid(items: list[tuple[str, str, str]]) -> None:
+    cells = []
+    for label, value, detail in items:
+        detail_html = f"<small>{h(detail)}</small>" if detail else ""
+        cells.append(
+            '<div class="nova-metric">'
+            f'<span>{h(label)}</span>'
+            f'<strong>{h(value)}</strong>'
+            f'{detail_html}'
+            '</div>'
+        )
+    st.markdown(
+        f'<div class="nova-metric-grid">{"".join(cells)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _focus_summary_html(items: list[tuple[str, str]]) -> str:
+    cells = []
+    for label, value in items:
+        cells.append(
+            '<div class="focus-summary-cell">'
+            f'<span>{h(label)}</span>'
+            f'<strong>{h(value)}</strong>'
+            '</div>'
+        )
+    return f'<div class="focus-summary">{"".join(cells)}</div>'
+
+
+def _course_line(c: dict, days_until: int) -> str:
+    status = f"{days_until}d left" if days_until >= 0 else "Past"
+    if days_until == 0:
+        status = "Today"
+    elif days_until == 1:
+        status = "Tomorrow"
+    return (
+        '<div class="course-line">'
+        '<div>'
+        f'<strong>{h(c["name"])}</strong>'
+        f'<small>Exam {c["exam_date"]:%d %b %Y}</small>'
+        '</div>'
+        '<div class="course-meta">'
+        f'<span>{c["ects"]:g} ECTS</span>'
+        f'<span>{h(difficulty_label(int(c["difficulty"])))}</span>'
+        f'<span>{fmt_hours(c["estimated_hours"])}</span>'
+        f'<span>{h(status)}</span>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _week_overview_html(sessions_df: pd.DataFrame, sel_week: dt.date,
+                        courses: list[dict]) -> str:
+    today = dt.date.today()
+    rows = []
+    for offset in range(7):
+        day = sel_week + dt.timedelta(days=offset)
+        day_data = sessions_df[sessions_df["session_date"] == day]
+        total = int(day_data["planned_minutes"].sum()) if not day_data.empty \
+            else 0
+        done = int(day_data.apply(_session_done, axis=1).sum()) \
+            if not day_data.empty else 0
+        course_names = list(dict.fromkeys(
+            str(name) for name in day_data["course_name"].tolist()
+        ))
+        if not course_names:
+            summary = "No study"
+        elif len(course_names) <= 2:
+            summary = ", ".join(course_names)
+        else:
+            summary = f"{', '.join(course_names[:2])} +{len(course_names) - 2}"
+
+        exams = [c["name"] for c in courses if c["exam_date"] == day]
+        if exams:
+            summary = f"Exam: {exams[0]}"
+
+        row_class = "week-row today" if day == today else "week-row"
+        rows.append(
+            f'<div class="{row_class}">'
+            '<div>'
+            f'<strong>{DAY_NAMES[day.weekday()][:3]}</strong>'
+            f'<small>{day:%d %b}</small>'
+            '</div>'
+            '<div>'
+            f'<span>{h(summary)}</span>'
+            f'<small>{done}/{len(day_data)} done</small>'
+            '</div>'
+            f'<em>{fmt_task_minutes(total)}</em>'
+            '</div>'
+        )
+    return f'<div class="week-list">{"".join(rows)}</div>'
+
+
+def _course_progress_html(courses: list[dict],
+                          sessions_df: pd.DataFrame) -> str:
+    rows = []
+    for c in courses:
+        cp = sessions_df[sessions_df["course_id"] == c["id"]]
+        total_p = int(cp["planned_minutes"].sum()) if not cp.empty else 0
+        total_c = int(cp["completed_minutes"].sum()) if not cp.empty else 0
+        pct = min(total_c / total_p, 1.0) if total_p else 0
+        rows.append(
+            '<div class="progress-row">'
+            '<div class="progress-row-head">'
+            f'<strong>{h(c["name"])}</strong>'
+            f'<span>{fmt_minutes(total_c)} / {fmt_minutes(total_p)}</span>'
+            '</div>'
+            '<div class="progress-track">'
+            f'<div class="progress-fill" style="width:{pct * 100:.0f}%"></div>'
+            '</div>'
+            '</div>'
+        )
+    return f'<div class="progress-list">{"".join(rows)}</div>'
+
+
+def _course_balance(sessions_df: pd.DataFrame,
+                    totals: dict[int, float]) -> pd.DataFrame:
+    if sessions_df.empty:
+        return pd.DataFrame(columns=[
+            "course_id", "course_name", "planned", "target", "diff",
+        ])
+    per_course = (
+        sessions_df.groupby(["course_id", "course_name"])["planned_minutes"]
+        .sum().reset_index()
+        .rename(columns={"planned_minutes": "planned"})
+    )
+    per_course["target"] = per_course["course_id"].map(
+        lambda cid: int(totals.get(int(cid), 0))
+    )
+    per_course["diff"] = per_course["planned"].astype(int) - per_course["target"]
+    return per_course.sort_values(
+        "diff", key=lambda series: series.abs(), ascending=False)
+
+
+def _balance_html(balance: pd.DataFrame) -> str:
+    rows = []
+    for _, r in balance.iterrows():
+        diff = int(r["diff"])
+        ok = abs(diff) < 10
+        diff_text = "balanced" if ok else (
+            f"+{fmt_minutes(diff)}" if diff > 0
+            else f"-{fmt_minutes(abs(diff))}"
+        )
+        klass = "balance-row" if ok else "balance-row review"
+        rows.append(
+            f'<div class="{klass}">'
+            '<div>'
+            f'<strong>{h(r["course_name"])}</strong>'
+            f'<span>{fmt_minutes(int(r["planned"]))} planned / '
+            f'{fmt_minutes(int(r["target"]))} target</span>'
+            '</div>'
+            f'<em>{h(diff_text)}</em>'
+            '</div>'
+        )
+    return f'<div class="balance-list">{"".join(rows)}</div>'
 
 
 def greeting() -> str:
@@ -267,7 +815,7 @@ def redistribute_missed_sessions(user: dict,
 
 
 def render_adaptive_rescheduler(user: dict):
-    """Show a dialog when past study time is unfinished."""
+    """Offer to move unfinished past sessions without blocking the page."""
     sessions_df = sessions_as_df(user["id"])
     missed = missed_sessions_df(sessions_df)
     if missed.empty:
@@ -287,10 +835,10 @@ def render_adaptive_rescheduler(user: dict):
         .sum().sort_values(ascending=False)
     )
 
-    def body():
-        st.write(
-            f"You have **{fmt_minutes(missed_total)}** of unfinished study "
-            "time from past sessions."
+    with st.expander(f"Missed study time ({fmt_minutes(missed_total)})",
+                     expanded=False):
+        st.caption(
+            f"{fmt_minutes(missed_total)} of past study time is unfinished."
         )
         for course_name, minutes in by_course.items():
             st.caption(f"{course_name}: {fmt_minutes(int(minutes))}")
@@ -311,16 +859,6 @@ def render_adaptive_rescheduler(user: dict):
         if c2.button("Remind me later", use_container_width=True):
             st.session_state["missed_rescheduler_dismissed"] = signature
             st.rerun()
-
-    if hasattr(st, "dialog"):
-        @st.dialog("Missed study time")
-        def missed_dialog():
-            body()
-        missed_dialog()
-    else:
-        with st.container(border=True):
-            st.subheader("Missed study time")
-            body()
 
 
 def page_auth():
@@ -411,13 +949,12 @@ def page_dashboard(user: dict):
     courses = db.list_courses(user["id"])
     sessions_df = sessions_as_df(user["id"])
 
-    render_page_title(
-        f"{greeting()}, {user['display_name']}",
-        f"Study snapshot for {dt.date.today():%A, %d %B %Y}.",
-        "dashboard",
-    )
-
     if not courses:
+        render_page_title(
+            "Nova Exam Planner",
+            "Add your courses once, then follow the daily checklist.",
+            "dashboard",
+        )
         st.info(
             "Start by opening Courses in the sidebar, adding your first "
             "course, and generating a plan."
@@ -436,49 +973,59 @@ def page_dashboard(user: dict):
         (c for c in courses if c["exam_date"] >= dt.date.today()),
         key=lambda c: c["exam_date"], default=None)
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Courses", len(courses))
-    k2.metric("Planned", fmt_minutes(total_planned))
-    k3.metric("Completed", f"{pct:.0f}%",
-              fmt_minutes(total_completed))
-    if next_exam:
-        days = (next_exam["exam_date"] - dt.date.today()).days
-        k4.metric("Next exam",
-                  f"{days} day{'s' if days != 1 else ''}",
-                  next_exam["name"])
-    else:
-        k4.metric("Next exam", "-")
-
-    render_capacity_warning(courses, sessions_df)
-
-    st.divider()
-
-    st.subheader("Today's Sessions")
     today = dt.date.today()
     today_tasks = sessions_df[sessions_df["session_date"] == today] \
         if not sessions_df.empty else pd.DataFrame()
+    today_total = int(today_tasks["planned_minutes"].sum()) \
+        if not today_tasks.empty else 0
+    today_done = int(today_tasks.apply(_session_done, axis=1).sum()) \
+        if not today_tasks.empty else 0
+
+    render_page_title(
+        "Today",
+        (
+            f"{fmt_task_minutes(today_total)} planned - "
+            f"{today_done}/{len(today_tasks)} sessions done"
+        ),
+        "dashboard",
+    )
+
     if today_tasks.empty:
         st.caption("No sessions today.")
     else:
-        all_names = [c["name"] for c in courses]
         for _, row in today_tasks.iterrows():
-            clr = course_color(row["course_name"], all_names)
-            render_task_tile(
-                row["course_name"],
-                int(row["planned_minutes"]),
-                int(row["completed_minutes"]),
-                clr,
+            _render_session_card(
+                user["id"], row,
+                key_prefix=f"dashboard_{today.isoformat()}",
             )
 
-    st.divider()
+    next_exam_value = "-"
+    next_exam_detail = ""
+    if next_exam:
+        days = (next_exam["exam_date"] - dt.date.today()).days
+        next_exam_value = f"{days}d"
+        next_exam_detail = next_exam["name"]
 
-    st.subheader("Upcoming Exams")
+    with st.expander("Overview", expanded=False):
+        _metric_grid([
+            ("Courses", str(len(courses)), ""),
+            ("Planned", fmt_minutes(total_planned), ""),
+            ("Completed", f"{pct:.0f}%", fmt_minutes(total_completed)),
+            ("Next exam", next_exam_value, next_exam_detail),
+        ])
+
+    render_capacity_warning(courses, sessions_df)
+
     upcoming = [c for c in courses
                 if 0 <= (c["exam_date"] - today).days <= 21]
     upcoming.sort(key=lambda c: c["exam_date"])
-    if not upcoming:
-        st.caption("No exams in the next three weeks.")
-    else:
+    if upcoming:
+        st.markdown(
+            '<div class="simple-section-title">'
+            '<h3>Upcoming exams</h3><span>next 3 weeks</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         for c in upcoming:
             d = (c["exam_date"] - today).days
             chip_class = "chip-urgent" if d <= 3 \
@@ -506,7 +1053,7 @@ def _render_quickstart():
     cards = [
         (
             "1. Add courses",
-            "Name, exam date, ECTS and difficulty. This opens the course form.",
+            "Pick a Nova course or custom course, then choose difficulty.",
         ),
         (
             "2. Set constraints",
@@ -611,250 +1158,206 @@ def page_cafeteria(user: dict):
                 unsafe_allow_html=True)
 
 
-def page_courses(user: dict):
-    render_page_title(
-        "Courses & Constraints",
-        "Add exams, set your available time, then build the study plan.",
-        "setup",
-    )
+def _render_generate_plan(user: dict, courses: list[dict],
+                          weekly_hours: int, max_daily: int,
+                          start_date: dt.date, preferred_days: list[str],
+                          skip_holidays: bool) -> None:
+    notice = st.session_state.pop("plan_generated_notice", None)
+    if notice:
+        st.success(notice)
+    warning = st.session_state.pop("plan_generated_warning", None)
+    if warning:
+        st.warning(warning)
 
-    st.subheader("Study Constraints")
-    con = db.get_constraints(user["id"])
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        weekly_hours = st.number_input(
-            "Weekly study hours", 1, 80, int(con["weekly_hours"]))
-    with c2:
-        max_daily = st.number_input(
-            "Max hours / day", 1, 16, int(con["max_hours_per_day"]))
-    with c3:
-        start_date = st.date_input(
-            "Plan start date", con["start_date"])
-
-    preferred_days = st.multiselect(
-        "Preferred study days",
-        DAY_NAMES,
-        default=con["preferred_days"] or DAY_NAMES,
-    )
-    if not preferred_days:
-        st.warning("Select at least one study day.")
-        preferred_days = list(DAY_NAMES)
-
-    c4, c5 = st.columns([2, 1])
-    with c4:
-        skip_holidays = st.checkbox(
-            f"Skip public holidays ({user['country_code']})",
-            value=bool(con["skip_holidays"]),
-            help="Fetches holidays from date.nager.at and excludes them "
-                 "from the schedule.",
-        )
-    with c5:
-        if st.button("Save settings", use_container_width=True):
-            db.save_constraints(
-                user["id"],
-                weekly_hours=weekly_hours,
-                preferred_days=preferred_days,
-                max_hours_per_day=max_daily,
-                start_date=start_date,
-                skip_holidays=skip_holidays,
-            )
-            st.toast("Settings saved.")
-
-    if skip_holidays:
-        with st.expander("Show upcoming public holidays"):
-            years = sorted({start_date.year, start_date.year + 1})
-            holidays = api.get_holidays_detailed(
-                user["country_code"], years)
-            future = [h for h in holidays if h["date"] >= dt.date.today()][:12]
-            if not future:
-                st.caption("No upcoming holidays found.")
-            else:
-                for h in future:
-                    st.markdown(
-                        f"- **{h['date']:%d %b %Y}** - "
-                        f"{h['local_name']} ({h['name']})")
-
-    st.divider()
-
-    editing_id = st.session_state.get("editing_course_id")
-    editing = db.get_course(user["id"], editing_id) if editing_id else None
-    st.subheader("Edit course" if editing else "Add course")
-    existing_courses = db.list_courses(user["id"])
-
-    defaults = editing or {
-        "name": "",
-        "exam_date": dt.date.today() + dt.timedelta(days=30),
-        "ects": 6.0,
-        "difficulty": 3,
-        "estimated_hours": 0.0,
-    }
-
-    with st.form("course_form", clear_on_submit=True):
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            name = st.text_input("Course name", defaults["name"])
-            ects = st.number_input(
-                "ECTS", 0.5, 30.0, float(defaults["ects"]),
-                step=0.5, format="%.1f")
-        with fc2:
-            exam_date = st.date_input("Exam date", defaults["exam_date"])
-            difficulty = st.slider(
-                "Difficulty (1-5)", 1, 5, int(defaults["difficulty"]))
-
-        auto_est = estimate_hours(ects, difficulty)
-        estimated = st.number_input(
-            f"Estimated study hours (suggested: {fmt_hours(auto_est)})",
-            min_value=1.0,
-            value=(defaults["estimated_hours"]
-                   if defaults["estimated_hours"] > 0 else auto_est),
-            step=0.5,
-        )
-
-        other_names = [
-            c["name"] for c in existing_courses
-            if not editing_id or c["id"] != editing_id
-        ]
-        duplicate_name = (
-            bool(name.strip())
-            and name.strip().lower() in {n.lower() for n in other_names}
-        )
-        separated_name = unique_course_name(name, other_names) \
-            if name.strip() else ""
-        separate_duplicate = False
-        if duplicate_name:
-            st.warning(
-                f"A course named **{name.strip()}** already exists. "
-                f"To keep both, save this one as **{separated_name}**."
-            )
-            separate_duplicate = st.checkbox(
-                f"Save anyway as {separated_name}",
-                help="Nova keeps course names unique so schedules and exports "
-                     "can clearly tell them apart.",
-            )
-
-        btn_label = "Update course" if editing else "Add course"
-        submitted = st.form_submit_button(btn_label, type="primary")
-
-        if submitted and name.strip():
-            final_name = separated_name if duplicate_name and separate_duplicate \
-                else name.strip()
-            if duplicate_name and not separate_duplicate:
-                st.error(
-                    "That course name already exists. Tick the checkbox to "
-                    "save a separated copy, or choose a different name."
-                )
-                return
-            try:
-                db.upsert_course(
-                    user["id"], final_name, exam_date,
-                    ects, difficulty, estimated,
-                    course_id=editing_id,
-                )
-                st.session_state["editing_course_id"] = None
-                st.toast(f"{'Updated' if editing else 'Added'} {final_name}.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Could not save course: {e}")
-
-    if editing and st.button("Cancel editing"):
-        st.session_state["editing_course_id"] = None
-        st.rerun()
-
-    st.divider()
-
-    st.subheader("Your courses")
-    courses = db.list_courses(user["id"])
-    if not courses:
-        st.info("No courses yet. Add one above to get started.")
-        return
-
-    for c in courses:
-        days_until = (c["exam_date"] - dt.date.today()).days
-        status = "Due soon" if days_until <= 7 else (
-            "Coming up" if days_until <= 21 else "Later"
-        )
-
-        with st.container(border=True):
-            cols = st.columns([0.30, 0.10, 0.10, 0.16, 0.14, 0.10, 0.10])
-            cols[0].markdown(f"**{c['name']}**")
-            cols[1].caption(f"ECTS {c['ects']:g}")
-            cols[2].caption(f"Diff {c['difficulty']}/5")
-            cols[3].caption(f"Est. {fmt_hours(c['estimated_hours'])}")
-            cols[4].caption(f"{c['exam_date']:%d %b}")
-            cols[5].caption(
-                f"{status}: {days_until}d" if days_until >= 0 else "past")
-            with cols[6]:
-                b1, b2 = st.columns(2)
-                if b1.button("Edit", key=f"edit_{c['id']}",
-                             help="Edit this course"):
-                    st.session_state["editing_course_id"] = c["id"]
-                    st.rerun()
-                if b2.button("Del", key=f"del_{c['id']}",
-                             help="Delete this course"):
-                    db.delete_course(user["id"], c["id"])
-                    st.toast(f"Deleted {c['name']}.")
-                    st.rerun()
-
-    st.divider()
-
-    st.subheader("Generate study plan")
-    if st.button("Generate balanced plan", type="primary",
+    if st.button("Generate study plan", type="primary",
                  use_container_width=True):
         with st.spinner("Building your schedule..."):
+            today = dt.date.today()
+            plan_start = max(start_date, today)
             db.save_constraints(
                 user["id"],
                 weekly_hours=weekly_hours,
                 preferred_days=preferred_days,
                 max_hours_per_day=max_daily,
-                start_date=start_date,
+                start_date=plan_start,
                 skip_holidays=skip_holidays,
             )
+
+            scheduled_courses = []
+            for course in courses:
+                scheduled = dict(course)
+                scheduled["study_start_date"] = max(
+                    plan_start,
+                    course_study_start(course, today),
+                )
+                scheduled_courses.append(scheduled)
 
             exclude = set()
             if skip_holidays:
-                end = max((c["exam_date"] for c in courses),
-                          default=start_date)
-                years = list(range(start_date.year, end.year + 1))
+                end = max((c["exam_date"] for c in scheduled_courses),
+                          default=plan_start)
+                years = list(range(plan_start.year, end.year + 1))
                 exclude = api.get_holiday_dates(
                     user["country_code"], years)
 
             sessions = generate_study_plan(
-                courses,
+                scheduled_courses,
                 preferred_days=preferred_days,
                 max_hours_per_day=max_daily,
-                start_date=start_date,
+                start_date=plan_start,
                 weekly_hours=weekly_hours,
                 exclude_dates=exclude,
             )
 
         if not sessions:
             st.error(
-                "Could not generate a plan.  Check that your exam dates "
-                "are in the future and at least one study day is selected.")
+                "Could not generate a plan. Check that exam dates are in "
+                "the future and at least one study day is selected.")
             return
 
         db.replace_sessions(user["id"], sessions)
         total_min = sum(s["planned_minutes"] for s in sessions)
         target_min = int(sum(c["estimated_hours"] * 60 for c in courses))
-        st.success(
-            f"Plan generated: {len(sessions)} sessions across "
-            f"{len({s['session_date'] for s in sessions})} days "
-            f"({fmt_minutes(total_min)} total). "
-            "Open Study Plan to review it.")
+        st.session_state["plan_generated_notice"] = (
+            f"Plan generated: {len(sessions)} sessions, "
+            f"{fmt_minutes(total_min)} total."
+        )
         if total_min + 5 < target_min:
-            st.warning(
-                f"Your daily/weekly limits leave "
-                f"{fmt_minutes(target_min - total_min)} unscheduled. "
-                "Increase your weekly hours, daily cap, or available study "
-                "days if you want to fit the full target."
+            st.session_state["plan_generated_warning"] = (
+                f"{fmt_minutes(target_min - total_min)} could not fit under "
+                "your current limits."
             )
+        st.rerun()
+
+
+def page_courses(user: dict):
+    render_page_title(
+        "Courses",
+        "Add courses, generate the plan, edit details if needed.",
+        "setup",
+    )
+
+    existing_courses = db.list_courses(user["id"])
+    _render_subject_loader(user, existing_courses)
+
+    st.divider()
+
+    courses = db.list_courses(user["id"])
+    if courses:
+        weekly_hours, max_daily, start_date, preferred_days, skip_holidays = (
+            _render_study_settings(user)
+        )
+        _render_generate_plan(
+            user, courses, weekly_hours, max_daily, start_date,
+            preferred_days, skip_holidays,
+        )
+        st.divider()
+
+    st.subheader("Courses")
+    if not courses:
+        st.info("No courses yet. Add one above to get started.")
+        return
+
+    for c in courses:
+        days_until = (c["exam_date"] - dt.date.today()).days
+        due = "past" if days_until < 0 else f"{days_until}d left"
+        summary = f"{c['name']} - {c['exam_date']:%d %b} - {due}"
+
+        with st.expander(summary, expanded=False):
+            st.markdown(_course_line(c, days_until), unsafe_allow_html=True)
+            with st.form(f"edit_course_form_{c['id']}"):
+                e1, e2 = st.columns(2)
+                with e1:
+                    edit_name = st.text_input(
+                        "Course name", c["name"],
+                        key=f"edit_name_{c['id']}",
+                    )
+                    edit_ects = st.number_input(
+                        "ECTS", 0.5, 30.0, float(c["ects"]),
+                        step=0.5, format="%.1f",
+                        key=f"edit_ects_{c['id']}",
+                    )
+                with e2:
+                    edit_exam = st.date_input(
+                        "Exam date", c["exam_date"],
+                        key=f"edit_exam_{c['id']}",
+                    )
+                    current_difficulty = difficulty_label(
+                        int(c["difficulty"])
+                    )
+                    edit_difficulty_label = st.selectbox(
+                        "Difficulty",
+                        DIFFICULTY_LABELS,
+                        index=DIFFICULTY_LABELS.index(
+                            current_difficulty),
+                        key=f"edit_difficulty_{c['id']}",
+                    )
+                    edit_difficulty = DIFFICULTY_VALUES[
+                        edit_difficulty_label]
+                    edit_estimated = estimate_hours(edit_ects, edit_difficulty)
+
+                    other_names = [
+                    item["name"] for item in courses
+                    if item["id"] != c["id"]
+                ]
+                duplicate_name = (
+                    bool(edit_name.strip())
+                    and edit_name.strip().lower()
+                    in {name.lower() for name in other_names}
+                )
+                separated_name = unique_course_name(
+                    edit_name, other_names) if edit_name.strip() else ""
+                save_as_copy = False
+                if duplicate_name:
+                    st.warning(
+                        f"A course named **{edit_name.strip()}** already "
+                        f"exists. Save as **{separated_name}** to keep both."
+                    )
+                    save_as_copy = st.checkbox(
+                        f"Save anyway as {separated_name}",
+                        key=f"edit_duplicate_{c['id']}",
+                    )
+
+                s1, s2 = st.columns([1, 1])
+                save = s1.form_submit_button("Save changes", type="primary")
+                delete = s2.form_submit_button("Delete course")
+
+                if delete:
+                    db.delete_course(user["id"], c["id"])
+                    st.toast(f"Deleted {c['name']}.")
+                    st.rerun()
+
+                if save:
+                    if not edit_name.strip():
+                        st.warning("Course name is required.")
+                        return
+                    if duplicate_name and not save_as_copy:
+                        st.error(
+                            "That course name already exists. Tick the "
+                            "checkbox to save a separated copy."
+                        )
+                        return
+
+                    final_name = separated_name \
+                        if duplicate_name and save_as_copy \
+                        else edit_name.strip()
+                    db.upsert_course(
+                        user["id"],
+                        final_name,
+                        edit_exam,
+                        edit_ects,
+                        edit_difficulty,
+                        edit_estimated,
+                        course_id=c["id"],
+                    )
+                    st.toast(f"Updated {final_name}.")
+                    st.rerun()
 
 
 def page_study_plan(user: dict):
     render_page_title(
         "Study Plan",
-        "Weekly calendar, today's work, and completion tracking.",
+        "Select a day and tick sessions done.",
         "plan",
     )
 
@@ -864,136 +1367,108 @@ def page_study_plan(user: dict):
         return
 
     courses = db.list_courses(user["id"])
-    all_names = [c["name"] for c in courses]
     today = dt.date.today()
 
     render_capacity_warning(courses, sessions_df)
 
-    today_tasks = sessions_df[sessions_df["session_date"] == today]
-    if not today_tasks.empty:
-        st.subheader("Today")
-        for _, row in today_tasks.iterrows():
-            clr = course_color(row["course_name"], all_names)
-            render_task_tile(
-                row["course_name"],
-                int(row["planned_minutes"]),
-                int(row["completed_minutes"]),
-                clr,
-            )
-        st.divider()
+    dates = sorted(sessions_df["session_date"].unique())
+    future_dates = [day for day in dates if day >= today]
+    default_day = today if today in dates else (
+        future_dates[0] if future_dates else dates[-1])
 
-    st.subheader("Weekly Calendar")
+    def day_label(day: dt.date) -> str:
+        total = int(
+            sessions_df.loc[
+                sessions_df["session_date"] == day, "planned_minutes"
+            ].sum()
+        )
+        if day == today:
+            prefix = "Today"
+        elif day == today + dt.timedelta(days=1):
+            prefix = "Tomorrow"
+        else:
+            prefix = f"{day:%a}"
+        return f"{prefix}, {day:%d %b} - {fmt_task_minutes(total)}"
 
-    min_d = sessions_df["session_date"].min()
-    max_d = sessions_df["session_date"].max()
+    day_labels = [day_label(day) for day in dates]
+    selected_label = st.selectbox(
+        "Study day",
+        day_labels,
+        index=dates.index(default_day),
+    )
+    selected_day = dates[day_labels.index(selected_label)]
 
-    weeks = []
-    ws = min_d - dt.timedelta(days=min_d.weekday())
-    while ws <= max_d:
-        weeks.append(ws)
-        ws += dt.timedelta(days=7)
+    day_tasks = sessions_df[
+        sessions_df["session_date"] == selected_day
+    ].sort_values(["completed_minutes", "course_name"])
 
-    week_labels = [
-        f"{w:%d %b} - {(w + dt.timedelta(days=6)):%d %b %Y}" for w in weeks]
-    cur_mon = today - dt.timedelta(days=today.weekday())
-    default_idx = max((i for i, w in enumerate(weeks) if w <= cur_mon),
-                      default=0)
-
-    sel_label = st.selectbox(
-        "Select week", week_labels,
-        index=min(default_idx, len(week_labels) - 1))
-    sel_week = weeks[week_labels.index(sel_label)]
-
-    cols = st.columns(7)
-    for offset in range(7):
-        day = sel_week + dt.timedelta(days=offset)
-        day_data = sessions_df[sessions_df["session_date"] == day]
-        is_today = (day == today)
-
-        with cols[offset]:
-            day_class = "calendar-day today" if is_today else "calendar-day"
-            st.markdown(
-                f"""
-                <div class="{day_class}">
-                    <small>{DAY_NAMES[day.weekday()][:3]}</small><br>
-                    <strong style="font-size:1.1em;">{day:%d}</strong>
-                </div>
-                """, unsafe_allow_html=True)
-
-            if day_data.empty:
-                st.caption("-")
-            else:
-                for _, row in day_data.iterrows():
-                    clr = course_color(row["course_name"], all_names)
-                    st.markdown(
-                        f"""
-                        <div class="mini-session" style="border-left-color:{h(clr)};">
-                            <div>{h(row['course_name'])}</div>
-                            <strong>{fmt_minutes(row['planned_minutes'])}</strong>
-                        </div>
-                        """, unsafe_allow_html=True)
-                st.caption(
-                    f"Total: {fmt_minutes(day_data['planned_minutes'].sum())}")
-
-            for c in courses:
-                if c["exam_date"] == day:
-                    st.markdown(
-                        f"""
-                        <div class="exam-tag">
-                            Exam: {h(c['name'])}
-                        </div>
-                        """, unsafe_allow_html=True)
-
-    st.divider()
-
-    st.subheader("Progress Tracking")
-    past = sessions_df[sessions_df["session_date"] <= today] \
-        .sort_values("session_date", ascending=False)
-    if past.empty:
-        st.info("No past sessions yet.")
+    heading = "Today" if selected_day == today else f"{selected_day:%A, %d %b}"
+    planned = int(day_tasks["planned_minutes"].sum()) if not day_tasks.empty \
+        else 0
+    done = int(day_tasks.apply(_session_done, axis=1).sum()) \
+        if not day_tasks.empty else 0
+    st.markdown(
+        '<div class="simple-section-title">'
+        f'<h3>{h(heading)}</h3>'
+        f'<span>{fmt_task_minutes(planned)} - {done}/{len(day_tasks)} done</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    if day_tasks.empty:
+        st.info("No study sessions on this day.")
     else:
-        cutoff = today - dt.timedelta(days=14)
-        recent = past[past["session_date"] >= cutoff]
-        for date_val, grp in recent.groupby("session_date", sort=False):
-            label = f"{date_val:%A, %d %b}"
-            if date_val == today:
-                label += " - today"
-            with st.expander(label, expanded=(date_val == today)):
-                for _, row in grp.iterrows():
-                    was_done = (row["completed_minutes"] >=
-                                row["planned_minutes"] > 0)
-                    k = f"chk_{row['id']}"
-                    new_val = st.checkbox(
-                        f"{row['course_name']} - "
-                        f"{fmt_minutes(row['planned_minutes'])}",
-                        value=was_done, key=k)
-                    if new_val and not was_done:
-                        db.update_session_completed(
-                            user["id"], row["id"],
-                            int(row["planned_minutes"]))
-                        st.rerun()
-                    elif not new_val and was_done:
-                        db.update_session_completed(
-                            user["id"], row["id"], 0)
-                        st.rerun()
+        for _, row in day_tasks.iterrows():
+            _render_session_card(
+                user["id"], row,
+                key_prefix=f"study_day_{selected_day.isoformat()}",
+            )
 
-    st.divider()
+    exams = [c for c in courses if c["exam_date"] == selected_day]
+    for course in exams:
+        st.warning(f"Exam today: {course['name']}")
 
-    st.subheader("Course Progress")
-    for c in courses:
-        cp = sessions_df[sessions_df["course_id"] == c["id"]]
-        total_p = int(cp["planned_minutes"].sum()) if not cp.empty else 0
-        total_c = int(cp["completed_minutes"].sum()) if not cp.empty else 0
-        pct = (total_c / total_p) if total_p else 0
+    render_adaptive_rescheduler(user)
+
+    with st.expander("Week overview", expanded=False):
+        min_d = sessions_df["session_date"].min()
+        max_d = sessions_df["session_date"].max()
+
+        weeks = []
+        ws = min_d - dt.timedelta(days=min_d.weekday())
+        while ws <= max_d:
+            weeks.append(ws)
+            ws += dt.timedelta(days=7)
+
+        week_labels = [
+            f"{w:%d %b} - {(w + dt.timedelta(days=6)):%d %b %Y}"
+            for w in weeks
+        ]
+        cur_mon = today - dt.timedelta(days=today.weekday())
+        default_idx = max((i for i, w in enumerate(weeks) if w <= cur_mon),
+                          default=0)
+
+        week_label = st.selectbox(
+            "Week",
+            week_labels,
+            index=min(default_idx, len(week_labels) - 1))
+        sel_week = weeks[week_labels.index(week_label)]
+
         st.markdown(
-            f"**{c['name']}** - {fmt_minutes(total_c)} / {fmt_minutes(total_p)}")
-        st.progress(min(pct, 1.0))
+            _week_overview_html(sessions_df, sel_week, courses),
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("Course progress", expanded=False):
+        st.markdown(
+            _course_progress_html(courses, sessions_df),
+            unsafe_allow_html=True,
+        )
 
 
 def page_customize(user: dict):
     render_page_title(
-        "Customize Plan",
-        "Edit generated sessions and rebalance a course when needed.",
+        "Customize",
+        "Adjust one course at a time.",
         "edit",
     )
 
@@ -1002,104 +1477,108 @@ def page_customize(user: dict):
         st.info("Generate a plan on the Courses page first.")
         return
 
-    st.caption(
-        "Edit **Planned Minutes** for any session, then **Save** or "
-        "**Rebalance** one course's diff across its remaining future "
-        "sessions so its total stays on target.")
+    courses = db.list_courses(user["id"])
+    if not courses:
+        st.info("Add courses first.")
+        return
 
-    edit_df = sessions_df[[
-        "id", "session_date", "course_name", "planned_minutes",
-    ]].rename(columns={"session_date": "date"}).copy()
-    edit_df["planned_minutes"] = edit_df["planned_minutes"].astype(int)
-
-    c_filter, w_filter = st.columns(2)
-    course_names = sorted(edit_df["course_name"].unique())
-    with c_filter:
-        sel_courses = st.multiselect(
-            "Filter by course", course_names, default=course_names)
-    filtered = edit_df[edit_df["course_name"].isin(sel_courses)]
-
-    with w_filter:
-        if not filtered.empty:
-            weeks = sorted(
-                pd.to_datetime(filtered["date"])
-                  .dt.isocalendar().week.unique())
-            if len(weeks) > 1:
-                wk = st.select_slider(
-                    "Filter by calendar week",
-                    options=weeks, value=(weeks[0], weeks[-1]))
-                mask_week = pd.to_datetime(
-                    filtered["date"]).dt.isocalendar().week.between(*wk)
-                filtered = filtered[mask_week]
-
-    st.divider()
-
-    edited = st.data_editor(
-        filtered,
-        column_config={
-            "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
-            "date": st.column_config.DateColumn("Date", disabled=True),
-            "course_name": st.column_config.TextColumn(
-                "Course", disabled=True),
-            "planned_minutes": st.column_config.NumberColumn(
-                "Planned Minutes", min_value=0, max_value=480, step=5),
-        },
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="plan_editor",
-    )
-
-    st.divider()
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Save edits", use_container_width=True,
-                     type="primary"):
-            for _, row in edited.iterrows():
-                db.update_session_planned(
-                    user["id"], int(row["id"]), int(row["planned_minutes"]))
-            st.toast("Edits saved.")
-            st.rerun()
-
-    with c2:
-        rebalance_course = st.selectbox(
-            "Course to rebalance", course_names,
-            label_visibility="collapsed")
-        if st.button("Rebalance course", use_container_width=True):
-            course = next(
-                (c for c in db.list_courses(user["id"])
-                 if c["name"] == rebalance_course), None)
-            if course:
-                sdf = sessions_as_df(user["id"])
-                sdf = rebalance_course_sessions(
-                    sdf.copy(), course["id"],
-                    course["estimated_hours"] * 60)
-                for _, row in sdf.iterrows():
-                    db.update_session_planned(
-                        user["id"], int(row["id"]),
-                        int(row["planned_minutes"]))
-                st.toast(f"Rebalanced {rebalance_course}.")
-                st.rerun()
-
-    st.divider()
-    st.subheader("Plan Summary")
-    sessions_df = sessions_as_df(user["id"])
     totals = courses_total_minutes(user["id"])
-    per_course = (
-        sessions_df.groupby(["course_id", "course_name"])["planned_minutes"]
-        .sum().reset_index()
+    balance = _course_balance(sessions_df, totals)
+    review_count = int((balance["diff"].abs() >= 10).sum())
+
+    course_by_name = {c["name"]: c for c in courses}
+    course_names = [c["name"] for c in sorted(
+        courses, key=lambda course: course["exam_date"]
+    )]
+    default_course = (
+        str(balance.iloc[0]["course_name"])
+        if not balance.empty and str(balance.iloc[0]["course_name"]) in course_by_name
+        else course_names[0]
     )
-    for _, r in per_course.iterrows():
-        target = totals.get(int(r["course_id"]), 0)
-        diff = int(r["planned_minutes"]) - int(target)
-        status = "OK" if abs(diff) < 10 else "Review"
-        diff_str = (f"+{fmt_minutes(diff)}" if diff >= 0
-                    else f"-{fmt_minutes(abs(diff))}")
-        st.markdown(
-            f"**{status}: {r['course_name']}** - "
-            f"Planned: {fmt_minutes(int(r['planned_minutes']))} | "
-            f"Target: {fmt_minutes(target)} | Diff: {diff_str}")
+
+    c1, c2 = st.columns([0.62, 0.38])
+    with c1:
+        selected_course = st.selectbox(
+            "Course",
+            course_names,
+            index=course_names.index(default_course),
+        )
+    with c2:
+        view = st.selectbox(
+            "Sessions",
+            ["Upcoming", "This week", "All"],
+        )
+
+    selected = course_by_name[selected_course]
+    filtered_sessions = sessions_df[
+        sessions_df["course_id"] == selected["id"]
+    ].copy()
+    today = dt.date.today()
+    if view == "Upcoming":
+        filtered_sessions = filtered_sessions[
+            filtered_sessions["session_date"] >= today
+        ]
+    elif view == "This week":
+        start = today - dt.timedelta(days=today.weekday())
+        end = start + dt.timedelta(days=7)
+        filtered_sessions = filtered_sessions[
+            (filtered_sessions["session_date"] >= start)
+            & (filtered_sessions["session_date"] < end)
+        ]
+
+    selected_balance = balance[balance["course_id"] == selected["id"]]
+    if not selected_balance.empty:
+        st.markdown(_balance_html(selected_balance), unsafe_allow_html=True)
+    if st.button("Rebalance selected course", use_container_width=True):
+        sdf = rebalance_course_sessions(
+            sessions_df.copy(), selected["id"],
+            selected["estimated_hours"] * 60)
+        for _, row in sdf.iterrows():
+            db.update_session_planned(
+                user["id"], int(row["id"]), int(row["planned_minutes"]))
+        st.toast(f"Rebalanced {selected_course}.")
+        st.rerun()
+
+    edit_df = filtered_sessions[[
+        "id", "session_date", "planned_minutes",
+    ]].rename(columns={
+        "session_date": "Date",
+        "planned_minutes": "Minutes",
+    }).copy()
+    edit_df["Minutes"] = edit_df["Minutes"].astype(int)
+
+    if edit_df.empty:
+        st.info("No sessions match this view.")
+        edited = edit_df
+    else:
+        editor_df = edit_df.set_index("id")
+        edited = st.data_editor(
+            editor_df,
+            column_config={
+                "Date": st.column_config.DateColumn(
+                    "Date", disabled=True, format="DD MMM YYYY"),
+                "Minutes": st.column_config.NumberColumn(
+                    "Minutes", min_value=0, max_value=480, step=5),
+            },
+            column_order=["Date", "Minutes"],
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            height=180,
+            key=f"plan_editor_{selected['id']}_{view}",
+        )
+
+    if st.button("Save visible sessions", use_container_width=True,
+                 type="primary", disabled=edit_df.empty):
+        for session_id, row in edited.iterrows():
+            db.update_session_planned(
+                user["id"], int(session_id), int(row["Minutes"]))
+        st.toast("Edits saved.")
+        st.rerun()
+
+    with st.expander(f"Plan balance ({review_count} to review)",
+                     expanded=False):
+        st.markdown(_balance_html(balance), unsafe_allow_html=True)
 
 
 def page_analytics(user: dict):
@@ -1138,11 +1617,13 @@ def page_analytics(user: dict):
     fig1 = px.bar(
         pc, x="planned", y="course_name", orientation="h",
         color="course_name", color_discrete_map=cmap, text="label")
-    fig1.update_traces(textposition="outside")
+    max_planned = max(float(pc["planned"].max()), 1.0)
+    fig1.update_traces(textposition="outside", cliponaxis=False)
     fig1.update_layout(
         showlegend=False,
         height=max(250, len(pc) * 60),
-        margin=dict(l=0, r=80, t=10, b=0),
+        margin=dict(l=0, r=120, t=10, b=0),
+        xaxis_range=[0, max_planned * 1.18],
         xaxis_title="Planned Minutes", yaxis_title="")
     st.plotly_chart(fig1, use_container_width=True)
 
@@ -1258,43 +1739,48 @@ def page_study_mode(user: dict):
     } for c in courses]
 
     labels = [t["label"] for t in targets]
-    selected_label = st.selectbox("What are you studying now?", labels)
+    selected_label = st.selectbox("Session", labels)
     target = targets[labels.index(selected_label)]
 
     st.divider()
 
     mode = st.radio(
-        "Timer style",
-        ["Pomodoro (25 / 5)", "Ultradian (90 / 20)", "Custom"],
+        "Focus length",
+        ["45 min study", "25 min focus", "Custom"],
         horizontal=True)
 
-    if mode.startswith("Pomodoro"):
+    if mode.startswith("45"):
+        focus_min, break_min, label = DEFAULT_FOCUS_MINUTES, 10, "Study block"
+    elif mode.startswith("25"):
         focus_min, break_min, label = 25, 5, "Pomodoro"
-    elif mode.startswith("Ultradian"):
-        focus_min, break_min, label = 90, 20, "Ultradian"
     else:
         label = "Custom"
         c1, c2 = st.columns(2)
         with c1:
             focus_min = st.number_input(
-                "Focus minutes", 5, 180, 45, step=5)
+                "Focus minutes", 5, 180, DEFAULT_FOCUS_MINUTES, step=5)
         with c2:
             break_min = st.number_input(
                 "Break minutes", 0, 60, 10, step=5)
 
     remaining = int(target.get("remaining_minutes", focus_min))
-    recommended_rounds = max(1, min(12, -(-remaining // int(focus_min))))
-    rounds = st.number_input(
-        "Rounds for this study block",
-        1, 12, int(recommended_rounds), step=1)
-    total_focus = int(rounds * focus_min)
+    block_minutes = int(focus_min)
+    if target["kind"] == "session":
+        block_minutes = min(block_minutes, remaining)
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Target", target["course_name"])
-    m2.metric("Remaining", fmt_minutes(remaining)
-              if target["kind"] == "session" else "Extra study")
-    m3.metric("Focus block", f"{int(focus_min)} min")
-    m4.metric("Planned focus", fmt_minutes(total_focus))
+    st.markdown(
+        _focus_summary_html([
+            ("Course", target["course_name"]),
+            (
+                "Remaining",
+                fmt_minutes(remaining)
+                if target["kind"] == "session" else "Extra study",
+            ),
+            ("Block", fmt_minutes(block_minutes)),
+            ("Break", f"{int(break_min)} min"),
+        ]),
+        unsafe_allow_html=True,
+    )
 
     if target["kind"] == "session":
         st.progress(
@@ -1308,22 +1794,21 @@ def page_study_mode(user: dict):
             "appears in your analytics and progress totals.")
 
     st.markdown(
-        f"**{label} Mode** - {int(focus_min)} min focus / "
-        f"{int(break_min)} min break / {int(rounds)} round"
-        f"{'s' if rounds != 1 else ''}")
+        f"**{label}** - {block_minutes} min focus / "
+        f"{int(break_min)} min break")
 
     st.components.v1.html(
-        _timer_html(int(focus_min), int(break_min), int(rounds)),
-        height=430)
+        _timer_html(block_minutes, int(break_min)),
+        height=320)
 
     c1, c2 = st.columns(2)
     with c1:
         if st.button(
-            f"Add one focus block ({fmt_minutes(focus_min)})",
+            f"Log block ({fmt_minutes(block_minutes)})",
             type="primary",
             use_container_width=True,
         ):
-            logged = log_study_minutes(user["id"], target, int(focus_min))
+            logged = log_study_minutes(user["id"], target, block_minutes)
             st.toast(f"Logged {fmt_minutes(logged)} for {target['course_name']}.")
             st.rerun()
     with c2:
@@ -1339,14 +1824,7 @@ def page_study_mode(user: dict):
                         f"({fmt_minutes(logged)} logged).")
                     st.rerun()
         else:
-            if st.button(
-                f"Log all {int(rounds)} round"
-                f"{'s' if rounds != 1 else ''}",
-                use_container_width=True,
-            ):
-                logged = log_study_minutes(user["id"], target, total_focus)
-                st.toast(f"Logged {fmt_minutes(logged)} for {target['course_name']}.")
-                st.rerun()
+            st.empty()
 
 def log_study_minutes(user_id: int, target: dict, minutes: int) -> int:
     """Add completed focus time to a scheduled session or extra course study."""
@@ -1390,43 +1868,48 @@ def _timer_html(focus_min: int, break_min: int, rounds: int = 1) -> str:
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         .tc {{
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-            text-align:center; padding:30px 20px;
-            background:#ffffff; color:#111111; max-width:420px; margin:0 auto;
-            border:1px solid rgba(17,17,17,0.12); border-radius:24px;
-            box-shadow:0 16px 44px rgba(17,17,17,0.06);
+            text-align:center; padding:18px;
+            background:#ffffff; color:#111111; max-width:360px; margin:0 auto;
+            border:1px solid rgba(17,17,17,0.12); border-radius:14px;
+            box-shadow:none;
         }}
-        .td {{ font-size:4.6em; font-weight:800; letter-spacing:0;
-               margin:16px 0; color:#111111;
+        .td {{ font-size:3.25em; font-weight:850; letter-spacing:0;
+               line-height:1; margin:12px 0; color:#111111;
                transition:color 0.4s; }}
         .td.brk {{ color:#555555; }}
-        .sl {{ font-size:1.1em; font-weight:700; text-transform:uppercase;
-               letter-spacing:0.08em; margin-bottom:8px; min-height:1.5em; }}
+        .sl {{ font-size:0.78em; font-weight:800; text-transform:uppercase;
+               letter-spacing:0.08em; margin-bottom:6px; min-height:1.2em; }}
         .sl.f {{ color:#111111; }} .sl.b {{ color:#555555; }}
         .sl.p {{ color:#555555; }}
-        .br {{ display:flex; gap:12px; justify-content:center; margin-top:22px; }}
-        .btn {{ padding:10px 28px; border:1px solid rgba(17,17,17,0.14);
-                border-radius:999px;
-                font-family:inherit; font-size:1em; font-weight:700;
-                cursor:pointer; transition:transform 0.1s; }}
+        .br {{ display:flex; gap:8px; justify-content:center; margin-top:16px; }}
+        .btn {{ min-width:76px; padding:8px 14px;
+                border:1px solid rgba(17,17,17,0.14); border-radius:999px;
+                font-family:inherit; font-size:0.9em; font-weight:750;
+                cursor:pointer; transition:background 0.1s; }}
         .btn:hover {{ transform:scale(1.05); }}
         .btn:active {{ transform:scale(0.97); }}
         .btn:disabled {{ opacity:0.5; cursor:not-allowed; }}
         .bs {{ background:#111111; color:white; }}
         .bp {{ background:#f3f3f3; color:#111111; }}
         .bx {{ background:#ffffff; color:#111111; }}
-        .pb {{ width:100%; height:6px; background:#e6e6e6;
-               margin-top:18px; overflow:hidden; border-radius:999px; }}
+        .pb {{ width:100%; height:5px; background:#e6e6e6;
+               margin-top:14px; overflow:hidden; border-radius:999px; }}
         .pf {{ height:100%;
                transition:width 1s linear, background 0.4s;
                background:#111111; }}
         .pf.brk {{ background:#555555; }}
-        .sc {{ font-size:0.85em; color:#555555; margin-top:14px; }}
+        .sc {{ font-size:0.78em; color:#555555; margin-top:10px; }}
+        @media (max-width:480px) {{
+            .tc {{ max-width:100%; padding:15px; }}
+            .td {{ font-size:2.75em; }}
+            .btn {{ min-width:0; flex:1; padding:8px 10px; }}
+        }}
     </style>
     <div class="tc">
         <div class="sl" id="sL">Ready</div>
         <div class="td" id="tD">{focus_min:02d}:00</div>
         <div class="pb"><div class="pf" id="pB" style="width:0%"></div></div>
-        <div class="sc" id="sC">Focus rounds completed: 0 / {rounds}</div>
+        <div class="sc" id="sC">Focus block ready</div>
         <div class="br">
             <button class="btn bs" id="bS" onclick="go()">Start</button>
             <button class="btn bp" id="bP" onclick="pa()" disabled>Pause</button>
@@ -1451,7 +1934,7 @@ def _timer_html(focus_min: int, break_min: int, rounds: int = 1) -> str:
         if(rm<0){{
             clearInterval(iv);iv=null;
             if(!ib){{sn++;
-                sC.textContent='Focus rounds completed: '+sn+' / '+TR;
+                sC.textContent='Focus block complete';
                 if(sn>=TR){{
                     sL.textContent='Complete';sL.className='sl b';
                     bS.disabled=true;bP.disabled=true;rm=0;rd();return;
@@ -1471,7 +1954,7 @@ def _timer_html(focus_min: int, break_min: int, rounds: int = 1) -> str:
         bS.disabled=false;bP.disabled=true;}}}}
     function re(){{clearInterval(iv);iv=null;ib=false;rm=FS;ts=FS;sn=0;
         sL.textContent='Ready';sL.className='sl';
-        sC.textContent='Focus rounds completed: 0 / '+TR;
+        sC.textContent='Focus block ready';
         bS.disabled=false;bP.disabled=true;rd();}}
     rd();
     </script>
@@ -1595,7 +2078,7 @@ def page_export(user: dict):
             {"name": c["name"],
              "exam_date": c["exam_date"].isoformat(),
              "ects": c["ects"],
-             "difficulty": c["difficulty"],
+             "difficulty": difficulty_label(int(c["difficulty"])),
              "estimated_hours": c["estimated_hours"]}
             for c in courses
         ])
@@ -1609,8 +2092,9 @@ def page_export(user: dict):
 
     st.subheader("Import courses")
     st.caption(
-        "Columns: `name, exam_date, ects, difficulty, estimated_hours`. "
-        "Existing courses with the same name will be updated.")
+        "Columns: `name, exam_date, ects, difficulty`. Difficulty can be "
+        "Low, Medium, or High. Existing courses with the same name will be "
+        "updated.")
     uploaded = st.file_uploader("Upload CSV", type=["csv"])
     if uploaded:
         try:
@@ -1623,13 +2107,20 @@ def page_export(user: dict):
                 existing = next(
                     (c for c in db.list_courses(user["id"])
                      if c["name"] == str(r["name"])), None)
+                ects_value = float(r["ects"])
+                difficulty = difficulty_value(r["difficulty"])
+                estimated = (
+                    float(r["estimated_hours"])
+                    if "estimated_hours" in df.columns
+                    else estimate_hours(ects_value, difficulty)
+                )
                 db.upsert_course(
                     user["id"],
                     name=str(r["name"]).strip(),
                     exam_date=exam_d,
-                    ects=float(r["ects"]),
-                    difficulty=int(r["difficulty"]),
-                    estimated_hours=float(r["estimated_hours"]),
+                    ects=ects_value,
+                    difficulty=difficulty,
+                    estimated_hours=estimated,
                     course_id=existing["id"] if existing else None,
                 )
                 imported += 1
@@ -1761,7 +2252,6 @@ def main():
 
     apply_pending_page_choice(PAGE_NAMES)
     choice = render_sidebar(user)
-    render_adaptive_rescheduler(user)
     PAGE_BY_NAME[choice](user)
 
 
