@@ -460,6 +460,37 @@ button[kind="primaryFormSubmit"] *,
     font-size: 0.82rem;
 }
 
+.daily-quote {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin: 0.35rem 0 0.55rem;
+    padding: 0.7rem 0.8rem;
+}
+
+.daily-quote span {
+    color: var(--muted);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.daily-quote p {
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 650;
+    line-height: 1.35;
+    margin: 0.18rem 0 0;
+}
+
+.daily-quote small,
+.daily-quote a {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
 .course-line {
     background: var(--panel);
     border: 1px solid var(--line);

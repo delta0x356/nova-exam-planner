@@ -42,6 +42,7 @@ All course, constraint, and session rows are scoped by `user_id`.
 - Estimate study time from ECTS and Low/Medium/High difficulty
 - Generate a balanced study plan before each exam
 - Track completed sessions and redistribute missed study time
+- Show a cached daily motivational quote on the dashboard
 - Review weekly calendar, progress charts, and per-course totals
 - Check the current Nova SBE cafeteria weekly menu
 - Use a simple focus timer and log study minutes

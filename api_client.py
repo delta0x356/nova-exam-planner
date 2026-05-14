@@ -1,4 +1,4 @@
-"""Public-holiday API helpers."""
+"""Small API helpers used by the app."""
 
 import datetime as dt
 import re
@@ -17,9 +17,17 @@ CAFETERIA_WEEKLY_MENU_URL = (
 CAFETERIA_WEEKLY_PAGE_URL_TEMPLATE = (
     "https://monbistrot.pt/menu/nova-sbe-semana-de-{start}-{end}"
 )
+DAILY_QUOTE_URL = "https://zenquotes.io/api/today"
 
 _REQUEST_TIMEOUT = 5  # seconds
 _CAFETERIA_TIMEOUT = 12
+_QUOTE_FALLBACKS = (
+    ("Small steps count when you keep taking them.", "Nova Exam Planner"),
+    ("Start with the next useful thing.", "Nova Exam Planner"),
+    ("A clear plan makes the hard part lighter.", "Nova Exam Planner"),
+    ("Progress is built one focused block at a time.", "Nova Exam Planner"),
+    ("Do the work in front of you, then do the next one.", "Nova Exam Planner"),
+)
 
 
 def _clean_menu_line(value) -> str:
@@ -298,6 +306,45 @@ def get_weekly_cafeteria_menu() -> dict:
             "error": str(exc),
             "days": [],
         }
+
+
+def _fallback_quote(day_key: str) -> dict:
+    idx = sum(ord(char) for char in day_key) % len(_QUOTE_FALLBACKS)
+    quote, author = _QUOTE_FALLBACKS[idx]
+    return {
+        "ok": False,
+        "quote": quote,
+        "author": author,
+        "source": DAILY_QUOTE_URL,
+        "source_name": "local fallback",
+    }
+
+
+@st.cache_data(ttl=86_400, show_spinner=False)
+def get_daily_motivational_quote(day_key: str) -> dict:
+    """Fetch one quote for the dashboard and cache it for the day."""
+    try:
+        response = requests.get(DAILY_QUOTE_URL, timeout=_REQUEST_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list) or not data:
+            raise ValueError("Quote source returned no quote")
+
+        item = data[0]
+        quote = _clean_menu_line(item.get("q"))
+        author = _clean_menu_line(item.get("a"))
+        if not quote or quote.lower().startswith("too many requests"):
+            raise ValueError("Quote source was rate limited")
+
+        return {
+            "ok": True,
+            "quote": quote,
+            "author": author or "Unknown",
+            "source": "https://zenquotes.io/",
+            "source_name": "ZenQuotes",
+        }
+    except Exception:
+        return _fallback_quote(day_key)
 
 
 @st.cache_data(ttl=86_400, show_spinner=False)

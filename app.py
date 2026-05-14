@@ -518,6 +518,22 @@ def _focus_summary_html(items: list[tuple[str, str]]) -> str:
     return f'<div class="focus-summary">{"".join(cells)}</div>'
 
 
+def _daily_quote_html(quote: dict) -> str:
+    source_html = ""
+    if quote.get("ok") and quote.get("source"):
+        source_html = (
+            f' <a href="{h(quote["source"])}" target="_blank" '
+            'rel="noopener noreferrer">ZenQuotes</a>'
+        )
+    return (
+        '<div class="daily-quote">'
+        '<span>Daily quote</span>'
+        f'<p>{h(quote.get("quote") or "")}</p>'
+        f'<small>{h(quote.get("author") or "Unknown")}{source_html}</small>'
+        '</div>'
+    )
+
+
 def _course_line(c: dict, days_until: int) -> str:
     status = f"{days_until}d left" if days_until >= 0 else "Past"
     if days_until == 0:
@@ -1023,6 +1039,9 @@ def page_dashboard(user: dict):
         ),
         "dashboard",
     )
+
+    quote = api.get_daily_motivational_quote(today.isoformat())
+    st.markdown(_daily_quote_html(quote), unsafe_allow_html=True)
 
     if today_tasks.empty:
         st.caption("No sessions today.")
