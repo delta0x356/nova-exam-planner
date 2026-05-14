@@ -492,8 +492,8 @@ button[kind="primaryFormSubmit"] *,
 
 .study-estimate-strip {
     align-items: center;
-    background: #edf5ff;
-    border: 1px solid #d9e8fb;
+    background: var(--panel);
+    border: 1px solid var(--line);
     border-radius: var(--radius-md);
     display: flex;
     flex-wrap: wrap;
@@ -503,7 +503,7 @@ button[kind="primaryFormSubmit"] *,
 }
 
 .study-estimate-strip span {
-    color: #2f65c8;
+    color: var(--muted);
     font-size: 0.72rem;
     font-weight: 850;
     letter-spacing: 0.08em;
@@ -511,13 +511,13 @@ button[kind="primaryFormSubmit"] *,
 }
 
 .study-estimate-strip strong {
-    color: #245cc8;
+    color: var(--ink);
     font-size: 1.18rem;
     line-height: 1;
 }
 
 .study-estimate-strip small {
-    color: #4f5f72;
+    color: var(--muted);
     font-size: 0.82rem;
 }
 
@@ -814,6 +814,54 @@ button[kind="primaryFormSubmit"] *,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.study-timer-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin: 0.9rem auto 0.45rem;
+    max-width: 22rem;
+    padding: 1rem;
+    text-align: center;
+}
+
+.study-timer-card span {
+    color: var(--ink);
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.study-timer-card strong {
+    color: var(--ink);
+    display: block;
+    font-size: 3rem;
+    font-weight: 850;
+    line-height: 1;
+    margin: 0.55rem 0 0.7rem;
+}
+
+.study-timer-track {
+    background: var(--soft);
+    border-radius: 999px;
+    height: 5px;
+    overflow: hidden;
+}
+
+.study-timer-fill {
+    background: var(--ink);
+    border-radius: 999px;
+    height: 100%;
+}
+
+.study-timer-card small {
+    color: var(--muted);
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.55rem;
 }
 
 .exam-tag {
