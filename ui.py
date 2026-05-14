@@ -816,54 +816,6 @@ button[kind="primaryFormSubmit"] *,
     white-space: nowrap;
 }
 
-.study-timer-card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    margin: 0.9rem auto 0.45rem;
-    max-width: 22rem;
-    padding: 1rem;
-    text-align: center;
-}
-
-.study-timer-card span {
-    color: var(--ink);
-    display: block;
-    font-size: 0.74rem;
-    font-weight: 850;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.study-timer-card strong {
-    color: var(--ink);
-    display: block;
-    font-size: 3rem;
-    font-weight: 850;
-    line-height: 1;
-    margin: 0.55rem 0 0.7rem;
-}
-
-.study-timer-track {
-    background: var(--soft);
-    border-radius: 999px;
-    height: 5px;
-    overflow: hidden;
-}
-
-.study-timer-fill {
-    background: var(--ink);
-    border-radius: 999px;
-    height: 100%;
-}
-
-.study-timer-card small {
-    color: var(--muted);
-    display: block;
-    font-size: 0.78rem;
-    margin-top: 0.55rem;
-}
-
 .exam-tag {
     border: 1px solid var(--danger);
     color: var(--danger);
