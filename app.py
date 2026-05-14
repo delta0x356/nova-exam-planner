@@ -127,6 +127,15 @@ def default_exam_date_for_semester(semester: str,
     return candidate
 
 
+def default_semester(today: Optional[dt.date] = None) -> str:
+    today = today or dt.date.today()
+    return "Fall" if today.month >= 8 or today.month == 1 else "Spring"
+
+
+def semester_index(semester: str) -> int:
+    return SEMESTERS.index(semester) if semester in SEMESTERS else 0
+
+
 def semester_start_date(semester: str, exam_date: dt.date) -> dt.date:
     month, day = SEMESTER_START_ESTIMATES[semester]
     year = exam_date.year if semester == "Fall" else exam_date.year
@@ -182,51 +191,158 @@ def fmt_task_minutes(minutes: float) -> str:
 def _render_subject_loader(user: dict, existing_courses: list[dict]):
     st.subheader("Add course")
     with st.container(border=True):
+        add_mode = st.segmented_control(
+            "Course source",
+            ["Nova course", "Custom course"],
+            default="Nova course",
+            key="course_loader_mode",
+            width="stretch",
+        )
         group_labels = {
             "mandatory": "Mandatory",
             "finance_elective": "Finance electives",
             "other_elective": "Other electives",
-            "custom": "Custom course",
         }
-        group_order = (*catalog.GROUP_ORDER, "custom")
+        group_order = catalog.GROUP_ORDER
         label_to_group = {group_labels[group]: group for group in group_order}
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            group_label = st.selectbox(
-                "Course list",
-                list(label_to_group),
-                key="subject_loader_group",
-            )
-
-        group = label_to_group[group_label]
-        program = catalog.PROGRAMS[0]
-        if group != "custom":
-            with c2:
-                program = st.selectbox(
-                    "Degree",
-                    catalog.PROGRAMS,
-                    key="subject_loader_program",
-                )
-        with c3:
-            selected_semester = st.selectbox(
-                "Semester",
-                SEMESTERS,
-                format_func=lambda value: f"{value} semester",
-                key="subject_loader_semester",
-            )
+        default_sem = default_semester()
         existing_names = [
             course["name"].strip()
             for course in existing_courses
         ]
 
-        if group == "custom":
-            c1, c2 = st.columns(2)
+        if add_mode == "Nova course":
+            c1, c2, c3 = st.columns([1, 1, 1])
+            with c1:
+                program = st.selectbox(
+                    "Degree",
+                    catalog.PROGRAMS,
+                    key="subject_loader_program",
+                )
+            with c2:
+                selected_semester = st.selectbox(
+                    "Semester",
+                    SEMESTERS,
+                    index=semester_index(default_sem),
+                    format_func=lambda value: f"{value} semester",
+                    key="subject_loader_semester",
+                )
+            with c3:
+                group_label = st.selectbox(
+                    "Course type",
+                    list(label_to_group),
+                    key="subject_loader_group",
+                )
+
+            group = label_to_group[group_label]
+            subjects = [
+                subject for subject in catalog.subjects_for(program, [group])
+                if period_semester(subject["period"]) == selected_semester
+            ]
+            subjects.sort(key=lambda subject: (
+                catalog.period_sort_key(subject["period"]),
+                subject["name"],
+            ))
+            if not subjects:
+                st.info("No courses found for this semester.")
+            else:
+                subjects_by_key = {
+                    catalog.subject_key(subject): subject
+                    for subject in subjects
+                }
+                subject_keys = list(subjects_by_key)
+                subject_key = (
+                    f"subject_loader_subject_{group}_{selected_semester}"
+                )
+                pending_subject = st.session_state.pop(
+                    "subject_loader_next_subject", None)
+                if pending_subject in subject_keys:
+                    st.session_state[subject_key] = pending_subject
+                if st.session_state.get(subject_key) not in subject_keys:
+                    st.session_state[subject_key] = subject_keys[0]
+
+                selected_key = st.selectbox(
+                    "Course",
+                    subject_keys,
+                    format_func=lambda key: catalog.subject_label(
+                        subjects_by_key[key]),
+                    key=subject_key,
+                )
+
+                subject = subjects_by_key[selected_key]
+                course_name = catalog.course_name(subject)
+                base_lower = course_name.strip().lower()
+                name_lower = subject["name"].strip().lower()
+                attempts = sum(
+                    1 for name in existing_names
+                    if name.lower() == base_lower
+                    or name.lower().startswith(f"{base_lower} (")
+                    or name.lower() == name_lower
+                )
+
+                today = dt.date.today()
+                exam_default = default_exam_date_for_semester(
+                    selected_semester, today)
+                semester = f"{selected_semester} {exam_default.year}"
+                st.caption(
+                    f"{subject['ects']:g} ECTS - "
+                    f"{subject['period']} - {semester}"
+                )
+                if attempts:
+                    st.caption(
+                        f"Already added {attempts} time"
+                        f"{'s' if attempts != 1 else ''}. "
+                        "Add again for a retake."
+                    )
+
+                d1, d2 = st.columns(2)
+                with d1:
+                    diff_label = st.selectbox(
+                        "Difficulty",
+                        DIFFICULTY_LABELS,
+                        index=1,
+                        key=f"subject_loader_difficulty_{selected_key}",
+                    )
+                with d2:
+                    exam_date = st.date_input(
+                        "Exam date",
+                        exam_default,
+                        key=(
+                            f"subject_loader_exam_"
+                            f"{selected_key}_{selected_semester}"
+                        ),
+                    )
+
+                difficulty = DIFFICULTY_VALUES[diff_label]
+                estimated = estimate_hours(subject["ects"], difficulty)
+
+                label = "Add another attempt" if attempts else "Add subject"
+                if st.button(label, width="stretch", type="primary"):
+                    final_name = unique_course_name(course_name, existing_names)
+                    db.upsert_course(
+                        user["id"],
+                        final_name,
+                        exam_date,
+                        subject["ects"],
+                        difficulty,
+                        estimated,
+                    )
+                    idx = subject_keys.index(selected_key)
+                    st.session_state["subject_loader_next_subject"] = (
+                        subject_keys[(idx + 1) % len(subject_keys)]
+                    )
+                    st.toast(f"Added {final_name}.")
+                    st.rerun()
+
+        else:
+            c1, c2, c3 = st.columns([1.5, 0.7, 0.8])
             with c1:
                 name = st.text_input(
                     "Course name",
+                    placeholder="e.g. Thesis Seminar",
                     key="custom_course_name",
                 )
+            with c2:
                 ects = st.number_input(
                     "ECTS",
                     0.5,
@@ -236,24 +352,35 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     format="%.1f",
                     key="custom_course_ects",
                 )
-            with c2:
-                exam_date = st.date_input(
-                    "Exam date",
-                    default_exam_date_for_semester(selected_semester),
-                    key=f"custom_course_exam_{selected_semester}",
+            with c3:
+                custom_semester = st.selectbox(
+                    "Semester",
+                    SEMESTERS,
+                    index=semester_index(default_sem),
+                    format_func=lambda value: f"{value} semester",
+                    key="custom_course_semester",
                 )
+
+            d1, d2 = st.columns(2)
+            with d1:
                 diff_label = st.selectbox(
                     "Difficulty",
                     DIFFICULTY_LABELS,
                     index=1,
                     key="custom_course_difficulty",
                 )
+            with d2:
+                exam_date = st.date_input(
+                    "Exam date",
+                    default_exam_date_for_semester(custom_semester),
+                    key=f"custom_course_exam_{custom_semester}",
+                )
 
             difficulty = DIFFICULTY_VALUES[diff_label]
             estimated = estimate_hours(ects, difficulty)
 
             if st.button("Add custom course",
-                         use_container_width=True, type="primary"):
+                         width="stretch", type="primary"):
                 if not name.strip():
                     st.warning("Enter a course name.")
                     return
@@ -268,99 +395,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 )
                 st.toast(f"Added {final_name}.")
                 st.rerun()
-            return
-
-        subjects = [
-            subject for subject in catalog.subjects_for(program, [group])
-            if period_semester(subject["period"]) == selected_semester
-        ]
-        subjects.sort(key=lambda subject: (
-            catalog.period_sort_key(subject["period"]),
-            subject["name"],
-        ))
-        if not subjects:
-            st.info("No courses found for this semester.")
-            return
-
-        subjects_by_key = {
-            catalog.subject_key(subject): subject
-            for subject in subjects
-        }
-        subject_keys = list(subjects_by_key)
-        course_options = subject_keys
-        subject_key = f"subject_loader_subject_{group}_{selected_semester}"
-        pending_subject = st.session_state.pop(
-            "subject_loader_next_subject", None)
-        if pending_subject in course_options:
-            st.session_state[subject_key] = pending_subject
-        if st.session_state.get(subject_key) not in course_options:
-            st.session_state[subject_key] = subject_keys[0]
-
-        selected_key = st.selectbox(
-            "Course",
-            course_options,
-            format_func=lambda key: catalog.subject_label(subjects_by_key[key]),
-            key=subject_key,
-        )
-
-        subject = subjects_by_key[selected_key]
-        course_name = catalog.course_name(subject)
-        base_lower = course_name.strip().lower()
-        name_lower = subject["name"].strip().lower()
-        attempts = sum(
-            1 for name in existing_names
-            if name.lower() == base_lower
-            or name.lower().startswith(f"{base_lower} (")
-            or name.lower() == name_lower
-        )
-
-        today = dt.date.today()
-        exam_default = default_exam_date_for_semester(selected_semester, today)
-        semester = f"{selected_semester} {exam_default.year}"
-        st.caption(
-            f"{subject['ects']:g} ECTS - {subject['period']} - {semester}"
-        )
-        if attempts:
-            st.caption(
-                f"Already added {attempts} time"
-                f"{'s' if attempts != 1 else ''}. Add again for a retake."
-            )
-
-        d1, d2 = st.columns(2)
-        with d1:
-            exam_date = st.date_input(
-                "Exam date",
-                exam_default,
-                key=f"subject_loader_exam_{selected_key}_{selected_semester}",
-            )
-        with d2:
-            diff_label = st.selectbox(
-                "Difficulty",
-                DIFFICULTY_LABELS,
-                index=1,
-                key=f"subject_loader_difficulty_{selected_key}",
-            )
-
-        difficulty = DIFFICULTY_VALUES[diff_label]
-        estimated = estimate_hours(subject["ects"], difficulty)
-
-        label = "Add another attempt" if attempts else "Add subject"
-        if st.button(label, use_container_width=True, type="primary"):
-            final_name = unique_course_name(course_name, existing_names)
-            db.upsert_course(
-                user["id"],
-                final_name,
-                exam_date,
-                subject["ects"],
-                difficulty,
-                estimated,
-            )
-            idx = subject_keys.index(selected_key)
-            st.session_state["subject_loader_next_subject"] = (
-                subject_keys[(idx + 1) % len(subject_keys)]
-            )
-            st.toast(f"Added {final_name}.")
-            st.rerun()
 
 
 def _render_study_settings(user: dict):
@@ -397,7 +431,7 @@ def _render_study_settings(user: dict):
                      "from the schedule.",
             )
         with c5:
-            if st.button("Save settings", use_container_width=True):
+            if st.button("Save settings", width="stretch"):
                 db.save_constraints(
                     user["id"],
                     weekly_hours=weekly_hours,
@@ -845,7 +879,7 @@ def render_adaptive_rescheduler(user: dict):
 
         c1, c2 = st.columns(2)
         if c1.button("Redistribute missed time", type="primary",
-                     use_container_width=True):
+                     width="stretch"):
             scheduled, unscheduled = redistribute_missed_sessions(user, missed)
             if scheduled:
                 st.toast(f"Redistributed {fmt_minutes(scheduled)}.")
@@ -856,7 +890,7 @@ def render_adaptive_rescheduler(user: dict):
                 )
             st.session_state["missed_rescheduler_dismissed"] = signature
             st.rerun()
-        if c2.button("Remind me later", use_container_width=True):
+        if c2.button("Remind me later", width="stretch"):
             st.session_state["missed_rescheduler_dismissed"] = signature
             st.rerun()
 
@@ -880,7 +914,7 @@ def page_auth():
                                   placeholder="your_username")
                 p = st.text_input("Password", type="password", key="login_p")
                 submit = st.form_submit_button(
-                    "Log in", type="primary", use_container_width=True)
+                    "Log in", type="primary", width="stretch")
             if submit:
                 user = auth.authenticate(u.strip(), p)
                 if user:
@@ -925,7 +959,7 @@ def page_auth():
                 rp2 = st.text_input("Confirm password *", type="password")
                 reg_submit = st.form_submit_button(
                     "Create account", type="primary",
-                    use_container_width=True)
+                    width="stretch")
 
             if reg_submit:
                 if rp != rp2:
@@ -1071,7 +1105,7 @@ def _render_quickstart():
                 st.button(
                     f"**{title}**\n\n{body}",
                     key=f"quickstart_action_{idx}",
-                    use_container_width=True,
+                    width="stretch",
                     on_click=go_to_page,
                     args=("Courses",),
                 )
@@ -1170,7 +1204,7 @@ def _render_generate_plan(user: dict, courses: list[dict],
         st.warning(warning)
 
     if st.button("Generate study plan", type="primary",
-                 use_container_width=True):
+                 width="stretch"):
         with st.spinner("Building your schedule..."):
             today = dt.date.today()
             plan_start = max(start_date, today)
@@ -1529,7 +1563,7 @@ def page_customize(user: dict):
     selected_balance = balance[balance["course_id"] == selected["id"]]
     if not selected_balance.empty:
         st.markdown(_balance_html(selected_balance), unsafe_allow_html=True)
-    if st.button("Rebalance selected course", use_container_width=True):
+    if st.button("Rebalance selected course", width="stretch"):
         sdf = rebalance_course_sessions(
             sessions_df.copy(), selected["id"],
             selected["estimated_hours"] * 60)
@@ -1561,14 +1595,14 @@ def page_customize(user: dict):
                     "Minutes", min_value=0, max_value=480, step=5),
             },
             column_order=["Date", "Minutes"],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="fixed",
             height=180,
             key=f"plan_editor_{selected['id']}_{view}",
         )
 
-    if st.button("Save visible sessions", use_container_width=True,
+    if st.button("Save visible sessions", width="stretch",
                  type="primary", disabled=edit_df.empty):
         for session_id, row in edited.iterrows():
             db.update_session_planned(
@@ -1625,7 +1659,7 @@ def page_analytics(user: dict):
         margin=dict(l=0, r=120, t=10, b=0),
         xaxis_range=[0, max_planned * 1.18],
         xaxis_title="Planned Minutes", yaxis_title="")
-    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig1, width="stretch")
 
     st.divider()
 
@@ -1642,7 +1676,7 @@ def page_analytics(user: dict):
         barmode="stack", height=380,
         margin=dict(l=0, r=0, t=10, b=0),
         legend=dict(orientation="h", y=-0.25))
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
 
     st.divider()
 
@@ -1658,7 +1692,7 @@ def page_analytics(user: dict):
         line_dash="dash", line_color="#555555",
         annotation_text="Daily max")
     fig3.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig3, width="stretch")
 
     st.divider()
 
@@ -1676,7 +1710,7 @@ def page_analytics(user: dict):
         margin=dict(l=0, r=0, t=10, b=0),
         yaxis_title="Hours",
         legend=dict(orientation="h", y=-0.15))
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, width="stretch")
 
     st.divider()
 
@@ -1797,16 +1831,19 @@ def page_study_mode(user: dict):
         f"**{label}** - {block_minutes} min focus / "
         f"{int(break_min)} min break")
 
-    st.components.v1.html(
-        _timer_html(block_minutes, int(break_min)),
-        height=320)
+    timer_html = _timer_html(block_minutes, int(break_min))
+    timer_src = (
+        "data:text/html;base64,"
+        + base64.b64encode(timer_html.encode("utf-8")).decode("ascii")
+    )
+    st.iframe(timer_src, height=320, width="stretch")
 
     c1, c2 = st.columns(2)
     with c1:
         if st.button(
             f"Log block ({fmt_minutes(block_minutes)})",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
             logged = log_study_minutes(user["id"], target, block_minutes)
             st.toast(f"Logged {fmt_minutes(logged)} for {target['course_name']}.")
@@ -1814,7 +1851,7 @@ def page_study_mode(user: dict):
     with c2:
         if target["kind"] == "session":
             if st.button("Mark selected session complete",
-                         use_container_width=True):
+                         width="stretch"):
                 remaining_now = (
                     target["planned_minutes"] - target["completed_minutes"])
                 if remaining_now > 0:
@@ -2062,14 +2099,14 @@ def page_export(user: dict):
                 "Download as CSV",
                 sessions_df.to_csv(index=False),
                 file_name=f"nova_plan_{user['username']}.csv",
-                mime="text/csv", use_container_width=True)
+                mime="text/csv", width="stretch")
         with c2:
             ics_bytes = _build_ics(sessions_df, courses, user)
             st.download_button(
                 "Download as ICS (calendar)",
                 ics_bytes,
                 file_name=f"nova_plan_{user['username']}.ics",
-                mime="text/calendar", use_container_width=True,
+                mime="text/calendar", width="stretch",
                 help="Import into Google Calendar, Outlook, Apple Calendar.")
 
     if courses:
@@ -2086,7 +2123,7 @@ def page_export(user: dict):
             "Download courses (CSV)",
             cdf.to_csv(index=False),
             file_name=f"nova_courses_{user['username']}.csv",
-            mime="text/csv", use_container_width=True)
+            mime="text/csv", width="stretch")
 
     st.divider()
 
@@ -2138,7 +2175,7 @@ def _build_ics(sessions_df: pd.DataFrame, courses: list[dict],
         f"PRODID:-//Nova Exam Planner//{user['username']}//EN",
         "CALSCALE:GREGORIAN",
     ]
-    now = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    now = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     for _, r in sessions_df.iterrows():
         d = r["session_date"]
@@ -2227,7 +2264,7 @@ def render_sidebar(user: dict) -> str:
             st.caption(f"{fmt_minutes(done)} done")
 
         st.divider()
-        if st.button("Log out", use_container_width=True):
+        if st.button("Log out", width="stretch"):
             auth.logout()
             st.rerun()
 
