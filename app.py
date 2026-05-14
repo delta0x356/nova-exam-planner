@@ -37,8 +37,8 @@ NOVA_LOGO_PATH = Path(__file__).parent / "assets" / "nova-logo-inverted.png"
 NOVA_FAVICON_PATH = Path(__file__).parent / "assets" / "nova-favicon.png"
 
 COURSE_COLORS = [
-    "#111111", "#333333", "#555555", "#777777", "#999999",
-    "#222222", "#444444", "#666666", "#888888", "#aaaaaa",
+    "#111111", "#6f6a5f", "#5f6f64", "#755f61", "#6c6477",
+    "#8a7a55", "#4f6158", "#7a6c67", "#5c5c5c", "#9a9288",
 ]
 
 DEFAULT_FOCUS_MINUTES = 45
@@ -1845,7 +1845,13 @@ def page_analytics(user: dict):
         pc, x="planned", y="course_name", orientation="h",
         color="course_name", color_discrete_map=cmap, text="label")
     max_planned = max(float(pc["planned"].max()), 1.0)
-    fig1.update_traces(textposition="outside", cliponaxis=False)
+    fig1.update_traces(
+        cliponaxis=False,
+        hovertemplate="%{y}<br>%{text} planned<extra></extra>",
+        marker_line_color="#ffffff",
+        marker_line_width=1,
+        textposition="outside",
+    )
     fig1.update_layout(
         showlegend=False,
         height=max(250, len(pc) * 60),
@@ -1865,6 +1871,11 @@ def page_analytics(user: dict):
         labels={"week_label": "Week of", "hours": "Hours",
                 "course_name": "Course"},
         category_orders={"week_label": a["week_order"]})
+    fig2.update_traces(
+        hovertemplate="%{fullData.name}<br>%{x}: %{y:.1f}h<extra></extra>",
+        marker_line_color="#ffffff",
+        marker_line_width=0.8,
+    )
     fig2.update_layout(
         barmode="stack", height=380,
         margin=dict(l=0, r=0, t=10, b=0),
@@ -1891,13 +1902,19 @@ def page_analytics(user: dict):
 
     st.subheader("Completed vs remaining")
     pc2 = a["per_course"].copy()
+    pc2_colors = [cmap.get(name, "#111111") for name in pc2["course_name"]]
     fig4 = go.Figure()
     fig4.add_trace(go.Bar(
         name="Completed", x=pc2["course_name"],
-        y=pc2["completed"] / 60, marker_color="#111111"))
+        y=pc2["completed"] / 60, marker_color=pc2_colors))
     fig4.add_trace(go.Bar(
         name="Remaining", x=pc2["course_name"],
         y=pc2["remaining"] / 60, marker_color="#e9ecef"))
+    fig4.update_traces(
+        hovertemplate="%{x}<br>%{y:.1f}h<extra>%{fullData.name}</extra>",
+        marker_line_color="#ffffff",
+        marker_line_width=0.8,
+    )
     fig4.update_layout(
         barmode="stack", height=380,
         margin=dict(l=0, r=0, t=10, b=0),
@@ -2324,9 +2341,9 @@ PAGES = [
     ("Dashboard", page_dashboard),
     ("Courses", page_courses),
     ("Study Plan", page_study_plan),
-    ("Cafeteria", page_cafeteria),
     ("Customize", page_customize),
     ("Analytics", page_analytics),
+    ("Cafeteria", page_cafeteria),
     ("Study Mode", page_study_mode),
     ("Export", page_export),
     ("Profile", page_profile),
