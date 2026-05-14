@@ -383,6 +383,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                         "Exam date",
                         future_date_value(exam_default, today),
                         min_value=today,
+                        format="DD/MM/YYYY",
                         key=(
                             f"subject_loader_exam_"
                             f"{selected_key}_{selected_semester}"
@@ -458,6 +459,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                         today,
                     ),
                     min_value=today,
+                    format="DD/MM/YYYY",
                     key=f"custom_course_exam_{custom_semester}",
                 )
 
@@ -503,6 +505,7 @@ def _render_study_settings(user: dict):
                 "Plan start date",
                 future_date_value(default_start),
                 min_value=dt.date.today(),
+                format="DD/MM/YYYY",
             )
 
         preferred_days = st.multiselect(
@@ -1562,6 +1565,7 @@ def page_courses(user: dict):
                         "Exam date",
                         future_date_value(c["exam_date"]),
                         min_value=dt.date.today(),
+                        format="DD/MM/YYYY",
                         key=f"edit_exam_{c['id']}",
                     )
                     current_difficulty = difficulty_label(
@@ -1948,16 +1952,27 @@ def page_analytics(user: dict):
 
     st.subheader("Daily load")
     daily = a["daily"].copy()
+    daily["date"] = pd.to_datetime(daily["date"]).dt.normalize()
     daily["hours"] = daily["total_minutes"] / 60
     fig3 = px.area(
         daily, x="date", y="hours",
         color_discrete_sequence=["#111111"],
         labels={"date": "Date", "hours": "Hours"})
+    fig3.update_traces(
+        hovertemplate="%{x|%d %b %Y}<br>%{y:.1f}h<extra></extra>")
     fig3.add_hline(
         y=int(con["max_hours_per_day"]),
         line_dash="dash", line_color="#555555",
         annotation_text="Daily max")
     fig3.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0))
+    fig3.update_xaxes(
+        hoverformat="%d %b %Y",
+        range=[
+            daily["date"].min() - pd.Timedelta(days=1),
+            daily["date"].max() + pd.Timedelta(days=1),
+        ],
+        tickformat="%d %b<br>%Y",
+    )
     st.plotly_chart(fig3, width="stretch")
 
     st.divider()
