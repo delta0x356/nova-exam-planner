@@ -273,13 +273,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
             key="course_loader_mode",
             width="stretch",
         )
-        group_labels = {
-            "mandatory": "Mandatory",
-            "finance_elective": "Finance electives",
-            "other_elective": "Other electives",
-        }
-        group_order = catalog.GROUP_ORDER
-        label_to_group = {group_labels[group]: group for group in group_order}
         default_sem = default_semester()
         existing_names = [
             course["name"].strip()
@@ -294,6 +287,12 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     catalog.PROGRAMS,
                     key="subject_loader_program",
                 )
+            program_key = program.lower().replace(" ", "_")
+            group_order = catalog.groups_for(program)
+            label_to_group = {
+                catalog.group_label(program, group): group
+                for group in group_order
+            }
             with c2:
                 selected_semester = st.selectbox(
                     "Semester",
@@ -306,7 +305,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 group_label = st.selectbox(
                     "Course type",
                     list(label_to_group),
-                    key="subject_loader_group",
+                    key=f"subject_loader_group_{program_key}",
                 )
 
             group = label_to_group[group_label]
@@ -327,7 +326,8 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 }
                 subject_keys = list(subjects_by_key)
                 subject_key = (
-                    f"subject_loader_subject_{group}_{selected_semester}"
+                    "subject_loader_subject_"
+                    f"{program_key}_{group}_{selected_semester}"
                 )
                 pending_subject = st.session_state.pop(
                     "subject_loader_next_subject", None)
