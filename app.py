@@ -11,6 +11,7 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 import database as db
 import auth
@@ -1898,15 +1899,15 @@ def page_study_mode(user: dict):
         f"{target.get('session_id', 'course')}:{target['course_id']}:"
         f"{block_minutes}:{int(break_min)}"
     )
-    st.html(
+    components.html(
         _timer_html(
             block_minutes,
             int(break_min),
             storage_key=timer_key,
             reset_token=reset_token,
         ),
-        unsafe_allow_javascript=True,
-        width="stretch",
+        height=320,
+        scrolling=False,
     )
 
     c1, c2 = st.columns(2)
