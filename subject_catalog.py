@@ -4,12 +4,14 @@ MASTER_OF_FINANCE = "Master of Finance"
 MASTER_OF_ECONOMICS = "Master of Economics"
 MASTER_OF_MANAGEMENT = "Master of Management"
 MASTER_OF_BUSINESS_ANALYTICS = "Master of Business Analytics"
+BACHELOR_OF_ECONOMICS = "Bachelor's in Economics"
 
 PROGRAMS = (
     MASTER_OF_FINANCE,
     MASTER_OF_ECONOMICS,
     MASTER_OF_MANAGEMENT,
     MASTER_OF_BUSINESS_ANALYTICS,
+    BACHELOR_OF_ECONOMICS,
 )
 
 PROGRAM_GROUPS = {
@@ -24,6 +26,11 @@ PROGRAM_GROUPS = {
         "mandatory",
         "business_analytics_elective",
         "other_elective",
+    ),
+    BACHELOR_OF_ECONOMICS: (
+        "mandatory",
+        "bachelor_economics_elective",
+        "general_elective",
     ),
 }
 
@@ -45,6 +52,11 @@ GROUP_LABELS = {
         "mandatory": "Mandatory",
         "business_analytics_elective": "Business Analytics electives",
         "other_elective": "Other electives",
+    },
+    BACHELOR_OF_ECONOMICS: {
+        "mandatory": "Mandatory",
+        "bachelor_economics_elective": "Economics electives",
+        "general_elective": "General electives",
     },
 }
 
@@ -674,6 +686,112 @@ Master of Business Analytics|other_elective|2475|T4|Sales and Retailing|3.5
 Master of Business Analytics|other_elective|2647|T4|Strategic Planning and Control|3.5
 Master of Business Analytics|other_elective|2751|T4|Sustainable Marketing|3.5
 Master of Business Analytics|other_elective|2458|T4|Talent Development|3.5
+Bachelor's in Economics|mandatory|1117|S1|Principles of Microeconomics|7
+Bachelor's in Economics|mandatory|1117|S2|Principles of Microeconomics|7
+Bachelor's in Economics|mandatory|1118|S1|Principles of Macroeconomics|7
+Bachelor's in Economics|mandatory|1118|S2|Principles of Macroeconomics|7
+Bachelor's in Economics|mandatory|1119|S1|Microeconomics|7
+Bachelor's in Economics|mandatory|1119|S2|Microeconomics|7
+Bachelor's in Economics|mandatory|1120|S1|Macroeconomics|7
+Bachelor's in Economics|mandatory|1120|S2|Macroeconomics|7
+Bachelor's in Economics|mandatory|1121|S1|Seminar in European Economics|7
+Bachelor's in Economics|mandatory|1121|S2|Seminar in European Economics|7
+Bachelor's in Economics|mandatory|1124|T1|Economic History|3.5
+Bachelor's in Economics|mandatory|1124|T3|Economic History|3.5
+Bachelor's in Economics|mandatory|1125|S1|Advanced Microeconomics|7
+Bachelor's in Economics|mandatory|1125|S2|Advanced Microeconomics|7
+Bachelor's in Economics|mandatory|1217|S1|Financial Accounting|7
+Bachelor's in Economics|mandatory|1217|S2|Financial Accounting|7
+Bachelor's in Economics|mandatory|1219|S1|Finance|7
+Bachelor's in Economics|mandatory|1219|S2|Finance|7
+Bachelor's in Economics|mandatory|1309|S1|Calculus I|7
+Bachelor's in Economics|mandatory|1309|S2|Calculus I|7
+Bachelor's in Economics|mandatory|1310|S1|Calculus II|7
+Bachelor's in Economics|mandatory|1310|S2|Calculus II|7
+Bachelor's in Economics|mandatory|1311|S1|Linear Algebra with Programming|7
+Bachelor's in Economics|mandatory|1311|S2|Linear Algebra with Programming|7
+Bachelor's in Economics|mandatory|1312|S1|Data Analysis and Probability|7
+Bachelor's in Economics|mandatory|1312|S2|Data Analysis and Probability|7
+Bachelor's in Economics|mandatory|1313|S1|Statistics for Economics and Management|7
+Bachelor's in Economics|mandatory|1313|S2|Statistics for Economics and Management|7
+Bachelor's in Economics|mandatory|1314|S1|Econometrics|7
+Bachelor's in Economics|mandatory|1314|S2|Econometrics|7
+Bachelor's in Economics|mandatory|1317|S1|Data Handling|3.5
+Bachelor's in Economics|mandatory|1317|S2|Data Handling|3.5
+Bachelor's in Economics|mandatory|1318|S1|Computer Programming|7
+Bachelor's in Economics|mandatory|1318|S2|Computer Programming|7
+Bachelor's in Economics|mandatory|1462|S1|Communication and Leadership|4
+Bachelor's in Economics|mandatory|1462|S2|Communication and Leadership|4
+Bachelor's in Economics|mandatory|1463|T1|Ethics|3.5
+Bachelor's in Economics|mandatory|1463|T2|Ethics|3.5
+Bachelor's in Economics|mandatory|1463|T3|Ethics|3.5
+Bachelor's in Economics|mandatory|1463|T4|Ethics|3.5
+Bachelor's in Economics|mandatory|1465|T1|Introduction to Modern and Contemporary History|3.5
+Bachelor's in Economics|mandatory|1465|T2|Introduction to Modern and Contemporary History|3.5
+Bachelor's in Economics|mandatory|1465|T3|Introduction to Modern and Contemporary History|3.5
+Bachelor's in Economics|mandatory|1465|T4|Introduction to Modern and Contemporary History|3.5
+Bachelor's in Economics|mandatory|1466|S1|Managing Impactful Projects|4
+Bachelor's in Economics|mandatory|1466|S2|Managing Impactful Projects|4
+Bachelor's in Economics|mandatory|1469|T1|Human Behavior and Decision Making|3.5
+Bachelor's in Economics|mandatory|1469|T2|Human Behavior and Decision Making|3.5
+Bachelor's in Economics|mandatory|1469|T3|Human Behavior and Decision Making|3.5
+Bachelor's in Economics|mandatory|1469|T4|Human Behavior and Decision Making|3.5
+Bachelor's in Economics|mandatory|1471|S1|Careers with Impact|4
+Bachelor's in Economics|mandatory|1471|S2|Careers with Impact|4
+Bachelor's in Economics|bachelor_economics_elective|1123|S1|Development Economics|7
+Bachelor's in Economics|bachelor_economics_elective|1126|S1|Industrial Organization|7
+Bachelor's in Economics|bachelor_economics_elective|1126|S2|Industrial Organization|7
+Bachelor's in Economics|bachelor_economics_elective|1129|S1|Public Economics|7
+Bachelor's in Economics|bachelor_economics_elective|1129|S2|Public Economics|7
+Bachelor's in Economics|bachelor_economics_elective|1130|T1|Behavioral Economics|3.5
+Bachelor's in Economics|bachelor_economics_elective|1130|T3|Behavioral Economics|3.5
+Bachelor's in Economics|bachelor_economics_elective|1131|T3|Environment and Natural Resources Economics|3.5
+Bachelor's in Economics|bachelor_economics_elective|1132|T3|History of Economic Thought|3.5
+Bachelor's in Economics|bachelor_economics_elective|1133|S1|International Macroeconomics|7
+Bachelor's in Economics|bachelor_economics_elective|1133|S2|International Macroeconomics|7
+Bachelor's in Economics|bachelor_economics_elective|1134|S1|International Trade|7
+Bachelor's in Economics|bachelor_economics_elective|1134|S2|International Trade|7
+Bachelor's in Economics|bachelor_economics_elective|1135|S1|Research in Economics - Project|7
+Bachelor's in Economics|bachelor_economics_elective|1135|S2|Research in Economics - Project|7
+Bachelor's in Economics|bachelor_economics_elective|1136|T3|Economic History of Portuguese Speaking Countries|3
+Bachelor's in Economics|bachelor_economics_elective|1137|T3|Macroeconomic Policies|3.5
+Bachelor's in Economics|bachelor_economics_elective|1231|S2|Topics in Finance|7
+Bachelor's in Economics|bachelor_economics_elective|1233|S2|Financial Markets|3.5
+Bachelor's in Economics|general_elective|1216|S2|Principles of Management|7
+Bachelor's in Economics|general_elective|1218|S1|Management Accounting|7
+Bachelor's in Economics|general_elective|1218|S2|Management Accounting|7
+Bachelor's in Economics|general_elective|1220|S1|Marketing|7
+Bachelor's in Economics|general_elective|1220|S2|Marketing|7
+Bachelor's in Economics|general_elective|1221|S1|Operations Management|7
+Bachelor's in Economics|general_elective|1221|S2|Operations Management|7
+Bachelor's in Economics|general_elective|1222|S1|Organizational Behavior|7
+Bachelor's in Economics|general_elective|1222|S2|Organizational Behavior|7
+Bachelor's in Economics|general_elective|1223|S1|Strategy|7
+Bachelor's in Economics|general_elective|1223|S2|Strategy|7
+Bachelor's in Economics|general_elective|1224|S1|Information Systems|7
+Bachelor's in Economics|general_elective|1224|S2|Information Systems|7
+Bachelor's in Economics|general_elective|1226|S1|Entrepreneurship|7
+Bachelor's in Economics|general_elective|1226|S2|Entrepreneurship|7
+Bachelor's in Economics|general_elective|1227|S1|International Management|7
+Bachelor's in Economics|general_elective|1227|S2|International Management|7
+Bachelor's in Economics|general_elective|1228|S1|Global Business Environment|7
+Bachelor's in Economics|general_elective|1228|S2|Global Business Environment|7
+Bachelor's in Economics|general_elective|1229|S1|Business Seminar|7
+Bachelor's in Economics|general_elective|1229|S2|Business Seminar|7
+Bachelor's in Economics|general_elective|1232|A|Cultural Diversity Management|3
+Bachelor's in Economics|general_elective|1319|S1|Multivariate Statistics|7
+Bachelor's in Economics|general_elective|1319|S2|Multivariate Statistics|7
+Bachelor's in Economics|general_elective|1464|T1|Law in Economics and Business|3.5
+Bachelor's in Economics|general_elective|1464|T2|Law in Economics and Business|3.5
+Bachelor's in Economics|general_elective|1464|T4|Law in Economics and Business|3.5
+Bachelor's in Economics|general_elective|1467|S1|European Law|7
+Bachelor's in Economics|general_elective|1467|S2|European Law|7
+Bachelor's in Economics|general_elective|1472|T1|Business Law|3.5
+Bachelor's in Economics|general_elective|1472|T3|Business Law|3.5
+Bachelor's in Economics|general_elective|1473|S1|Long-term Internship|7
+Bachelor's in Economics|general_elective|1473|S2|Long-term Internship|7
+Bachelor's in Economics|general_elective|1492|S1|Short-term Internship|3.5
+Bachelor's in Economics|general_elective|1492|S2|Short-term Internship|3.5
 """
 
 
