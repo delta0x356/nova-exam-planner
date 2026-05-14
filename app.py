@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 import base64
-import json
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 import database as db
 import auth
@@ -552,6 +551,141 @@ def _focus_summary_html(items: list[tuple[str, str]]) -> str:
             '</div>'
         )
     return f'<div class="focus-summary">{"".join(cells)}</div>'
+
+
+def _new_timer_state(timer_key: str, total_seconds: int) -> dict:
+    return {
+        "key": timer_key,
+        "total": int(total_seconds),
+        "remaining": int(total_seconds),
+        "running": False,
+        "running_from": int(total_seconds),
+        "started_at": None,
+        "complete": False,
+    }
+
+
+def _get_timer_state(timer_key: str, total_seconds: int) -> dict:
+    state = st.session_state.get("study_mode_timer")
+    if (
+        not isinstance(state, dict)
+        or state.get("key") != timer_key
+        or int(state.get("total", 0)) != int(total_seconds)
+    ):
+        state = _new_timer_state(timer_key, total_seconds)
+        st.session_state["study_mode_timer"] = state
+    return state
+
+
+def _sync_timer_state(state: dict) -> None:
+    if not state.get("running"):
+        return
+    elapsed = int(time.time() - float(state.get("started_at") or time.time()))
+    remaining = max(0, int(state.get("running_from", 0)) - elapsed)
+    state["remaining"] = remaining
+    if remaining <= 0:
+        state["running"] = False
+        state["complete"] = True
+    st.session_state["study_mode_timer"] = state
+
+
+def _clock_text(seconds: int) -> str:
+    minutes, rest = divmod(max(0, int(seconds)), 60)
+    return f"{minutes:02d}:{rest:02d}"
+
+
+def _timer_card_html(state: dict) -> str:
+    total = max(1, int(state["total"]))
+    remaining = max(0, int(state["remaining"]))
+    pct = ((total - remaining) / total) * 100
+    if state.get("complete"):
+        label, caption = "Complete", "Block finished"
+    elif state.get("running"):
+        label, caption = "Focus", "Focus running"
+    elif remaining < total:
+        label, caption = "Paused", "Paused"
+    else:
+        label, caption = "Ready", "Focus block ready"
+    return f"""
+        <div style="
+            background:#ffffff;
+            border:1px solid rgba(17,17,17,0.12);
+            border-radius:14px;
+            color:#111111;
+            margin:0.9rem auto 0.45rem;
+            max-width:360px;
+            padding:18px;
+            text-align:center;">
+            <div style="
+                color:#111111;
+                font-size:0.78rem;
+                font-weight:800;
+                letter-spacing:0.08em;
+                margin-bottom:6px;
+                text-transform:uppercase;">{h(label)}</div>
+            <div style="
+                color:#111111;
+                font-size:3.25rem;
+                font-weight:850;
+                line-height:1;
+                margin:12px 0;">{_clock_text(remaining)}</div>
+            <div style="
+                background:#e6e6e6;
+                border-radius:999px;
+                height:5px;
+                margin-top:14px;
+                overflow:hidden;
+                width:100%;">
+                <div style="
+                    background:#111111;
+                    border-radius:999px;
+                    height:100%;
+                    width:{pct:.1f}%;"></div>
+            </div>
+            <div style="
+                color:#555555;
+                font-size:0.78rem;
+                margin-top:10px;">{h(caption)}</div>
+        </div>
+    """
+
+
+@st.fragment(run_every="1s")
+def render_focus_timer(timer_key: str, total_seconds: int) -> None:
+    state = _get_timer_state(timer_key, total_seconds)
+    _sync_timer_state(state)
+    st.markdown(_timer_card_html(state), unsafe_allow_html=True)
+
+    _, controls, _ = st.columns([1, 1.1, 1])
+    with controls:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button(
+                "Start",
+                key=f"{timer_key}:start",
+                disabled=state["running"] or state["complete"],
+                type="primary",
+                width="stretch",
+            ):
+                state["running"] = True
+                state["complete"] = False
+                state["running_from"] = int(state["remaining"])
+                state["started_at"] = time.time()
+                st.session_state["study_mode_timer"] = state
+        with c2:
+            if st.button(
+                "Pause",
+                key=f"{timer_key}:pause",
+                disabled=not state["running"] or state["complete"],
+                width="stretch",
+            ):
+                _sync_timer_state(state)
+                state["running"] = False
+                st.session_state["study_mode_timer"] = state
+        with c3:
+            if st.button("Reset", key=f"{timer_key}:reset", width="stretch"):
+                st.session_state["study_mode_timer"] = _new_timer_state(
+                    timer_key, total_seconds)
 
 
 def _daily_quote_html(quote: dict) -> str:
@@ -1835,7 +1969,10 @@ def page_study_mode(user: dict):
     } for c in courses]
 
     labels = [t["label"] for t in targets]
-    selected_label = st.selectbox("Session", labels)
+    stored_label = st.session_state.get("study_mode_session")
+    label_index = labels.index(stored_label) if stored_label in labels else 0
+    selected_label = st.selectbox(
+        "Session", labels, index=label_index, key="study_mode_session")
     target = targets[labels.index(selected_label)]
 
     st.divider()
@@ -1894,19 +2031,10 @@ def page_study_mode(user: dict):
         f"{int(break_min)} min break")
 
     timer_key = (
-        f"{user['id']}:{target['kind']}:"
-        f"{target.get('session_id', 'course')}:{target['course_id']}:"
-        f"{block_minutes}:{int(break_min)}"
+        f"{user['id']}:{target['course_id']}:"
+        f"{int(focus_min)}:{int(break_min)}"
     )
-    components.html(
-        _timer_html(
-            block_minutes,
-            int(break_min),
-            storage_key=timer_key,
-        ),
-        height=320,
-        scrolling=False,
-    )
+    render_focus_timer(timer_key, block_minutes * 60)
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1917,15 +2045,14 @@ def page_study_mode(user: dict):
         ):
             logged = log_study_minutes(user["id"], target, block_minutes)
             if logged:
-                st.session_state["study_mode_notice"] = (
+                st.success(
                     f"Logged {fmt_minutes(logged)} for "
                     f"{target['course_name']}."
                 )
             else:
-                st.session_state["study_mode_notice"] = (
+                st.info(
                     "Nothing was logged because this session is already done."
                 )
-            st.rerun()
     with c2:
         if target["kind"] == "session":
             if st.button("Mark selected session complete",
@@ -1976,171 +2103,6 @@ def log_study_minutes(user_id: int, target: dict, minutes: int) -> int:
             user_id, int(target["course_id"]), today,
             planned_minutes=minutes, completed_minutes=minutes)
     return minutes
-
-
-def _timer_html(focus_min: int, break_min: int, rounds: int = 1,
-                storage_key: str = "default") -> str:
-    config = json.dumps({
-        "focus": int(focus_min) * 60,
-        "break": int(break_min) * 60,
-        "rounds": int(rounds),
-        "key": f"nova-study-timer:{storage_key}",
-    })
-    return f"""
-    <style>
-        * {{ margin:0; padding:0; box-sizing:border-box; }}
-        .tc {{
-            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-            text-align:center; padding:18px;
-            background:#ffffff; color:#111111; max-width:360px; margin:0 auto;
-            border:1px solid rgba(17,17,17,0.12); border-radius:14px;
-            box-shadow:none;
-        }}
-        .td {{ font-size:3.25em; font-weight:850; letter-spacing:0;
-               line-height:1; margin:12px 0; color:#111111;
-               transition:color 0.4s; }}
-        .td.brk {{ color:#555555; }}
-        .sl {{ font-size:0.78em; font-weight:800; text-transform:uppercase;
-               letter-spacing:0.08em; margin-bottom:6px; min-height:1.2em; }}
-        .sl.f {{ color:#111111; }} .sl.b {{ color:#555555; }}
-        .sl.p {{ color:#555555; }}
-        .br {{ display:flex; gap:8px; justify-content:center; margin-top:16px; }}
-        .btn {{ min-width:76px; padding:8px 14px;
-                border:1px solid rgba(17,17,17,0.14); border-radius:999px;
-                font-family:inherit; font-size:0.9em; font-weight:750;
-                cursor:pointer; transition:background 0.1s; }}
-        .btn:hover {{ transform:scale(1.05); }}
-        .btn:active {{ transform:scale(0.97); }}
-        .btn:disabled {{ opacity:0.5; cursor:not-allowed; }}
-        .bs {{ background:#111111; color:white; }}
-        .bp {{ background:#f3f3f3; color:#111111; }}
-        .bx {{ background:#ffffff; color:#111111; }}
-        .pb {{ width:100%; height:5px; background:#e6e6e6;
-               margin-top:14px; overflow:hidden; border-radius:999px; }}
-        .pf {{ height:100%;
-               transition:width 1s linear, background 0.4s;
-               background:#111111; }}
-        .pf.brk {{ background:#555555; }}
-        .sc {{ font-size:0.78em; color:#555555; margin-top:10px; }}
-        @media (max-width:480px) {{
-            .tc {{ max-width:100%; padding:15px; }}
-            .td {{ font-size:2.75em; }}
-            .btn {{ min-width:0; flex:1; padding:8px 10px; }}
-        }}
-    </style>
-    <div class="tc">
-        <div class="sl" id="sL">Ready</div>
-        <div class="td" id="tD">{focus_min:02d}:00</div>
-        <div class="pb"><div class="pf" id="pB" style="width:0%"></div></div>
-        <div class="sc" id="sC">Focus block ready</div>
-        <div class="br">
-            <button class="btn bs" id="bS" onclick="go()">Start</button>
-            <button class="btn bp" id="bP" onclick="pa()" disabled>Pause</button>
-            <button class="btn bx" onclick="re()">Reset</button>
-        </div>
-    </div>
-    <script>
-    const CFG={config};
-    let iv=null;
-    let state=loadState();
-    const tD=document.getElementById('tD'),sL=document.getElementById('sL'),
-          pB=document.getElementById('pB'),bS=document.getElementById('bS'),
-          bP=document.getElementById('bP'),sC=document.getElementById('sC');
-
-    function fresh(){{
-        return {{
-            focus:CFG.focus, break:CFG.break, rounds:CFG.rounds,
-            rm:CFG.focus, ts:CFG.focus, ib:false, sn:0,
-            running:false, complete:false, savedAt:Date.now()
-        }};
-    }}
-    function getStored(){{
-        try {{ return JSON.parse(localStorage.getItem(CFG.key)); }}
-        catch(e) {{ return null; }}
-    }}
-    function save(){{
-        state.savedAt=Date.now();
-        try {{ localStorage.setItem(CFG.key, JSON.stringify(state)); }}
-        catch(e) {{}}
-    }}
-    function valid(s){{
-        return s && s.focus===CFG.focus && s.break===CFG.break &&
-            s.rounds===CFG.rounds;
-    }}
-    function loadState(){{
-        const stored=getStored();
-        const s=valid(stored) ? stored : fresh();
-        if(s.running) advance(s, Math.floor((Date.now()-s.savedAt)/1000));
-        return s;
-    }}
-    function finish(s){{
-        s.running=false; s.complete=true; s.rm=0; s.ts=CFG.focus;
-    }}
-    function nextPhase(s){{
-        if(!s.ib){{
-            s.sn++;
-            if(s.sn>=CFG.rounds) {{ finish(s); return; }}
-            if(CFG.break<=0) {{
-                s.ib=false; s.rm=CFG.focus; s.ts=CFG.focus; return;
-            }}
-            s.ib=true; s.rm=CFG.break; s.ts=CFG.break;
-        }} else {{
-            s.ib=false; s.rm=CFG.focus; s.ts=CFG.focus;
-        }}
-    }}
-    function advance(s, elapsed){{
-        while(elapsed>0 && s.running && !s.complete){{
-            if(elapsed < s.rm) {{
-                s.rm -= elapsed; elapsed = 0;
-            }} else {{
-                elapsed -= s.rm;
-                s.rm = 0;
-                nextPhase(s);
-            }}
-        }}
-        s.savedAt=Date.now();
-    }}
-    function rd(){{
-        const m=Math.floor(state.rm/60),s=state.rm%60;
-        tD.textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
-        pB.style.width=((state.ts-state.rm)/state.ts*100).toFixed(1)+'%';
-        tD.className=state.ib?'td brk':'td';
-        pB.className=state.ib?'pf brk':'pf';
-        if(state.complete) {{
-            sL.textContent='Complete'; sL.className='sl b';
-            sC.textContent='Focus block complete';
-        }} else if(state.running) {{
-            sL.textContent=state.ib?'Break':'Focus';
-            sL.className=state.ib?'sl b':'sl f';
-            sC.textContent=state.ib?'Break running':'Focus running';
-        }} else if(state.rm < state.ts) {{
-            sL.textContent='Paused'; sL.className='sl p';
-            sC.textContent='Paused';
-        }} else {{
-            sL.textContent='Ready'; sL.className='sl';
-            sC.textContent='Focus block ready';
-        }}
-        bS.disabled=state.running || state.complete;
-        bP.disabled=!state.running || state.complete;
-    }}
-    function tk(){{
-        advance(state,1); save(); rd();
-        if(!state.running || state.complete){{
-            clearInterval(iv); iv=null;
-        }}
-    }}
-    function go(){{if(iv)return;
-        state.running=true; state.complete=false; save(); rd();
-        iv=setInterval(tk,1000);}}
-    function pa(){{if(iv){{clearInterval(iv);iv=null;
-        advance(state, Math.floor((Date.now()-state.savedAt)/1000));
-        state.running=false; save(); rd();}}}}
-    function re(){{clearInterval(iv);iv=null;state=fresh();save();rd();}}
-    window.addEventListener('beforeunload', save);
-    if(state.running && !state.complete) iv=setInterval(tk,1000);
-    rd();
-    </script>
-    """
 
 
 def page_profile(user: dict):
