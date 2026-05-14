@@ -119,6 +119,34 @@ def render_estimate_strip(ects: float, difficulty: int) -> None:
     )
 
 
+def study_hours_control(ects: float, difficulty: int, key_prefix: str,
+                        current_hours: Optional[float] = None,
+                        always_open: bool = False) -> float:
+    suggested = estimate_hours(ects, difficulty)
+    render_estimate_strip(ects, difficulty)
+
+    key_base = f"{key_prefix}_{float(ects):g}_{int(difficulty)}"
+    key_base = key_base.replace(".", "_")
+    value = float(current_hours) if current_hours is not None else suggested
+    if not always_open:
+        adjust = st.toggle(
+            "Adjust study hours",
+            key=f"{key_base}_adjust_hours",
+        )
+        if not adjust:
+            return suggested
+
+    return float(st.number_input(
+        "Study hours",
+        min_value=0.5,
+        max_value=300.0,
+        value=value,
+        step=0.5,
+        format="%.1f",
+        key=f"{key_base}_study_hours",
+    ))
+
+
 def default_exam_date(period: str, today: Optional[dt.date] = None) -> dt.date:
     today = today or dt.date.today()
     month, day = PERIOD_EXAM_ESTIMATES.get(period, (6, 15))
@@ -339,8 +367,11 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     )
 
                 difficulty = DIFFICULTY_VALUES[diff_label]
-                estimated = estimate_hours(subject["ects"], difficulty)
-                render_estimate_strip(subject["ects"], difficulty)
+                estimated = study_hours_control(
+                    subject["ects"],
+                    difficulty,
+                    f"subject_loader_{selected_key}",
+                )
 
                 label = "Add another attempt" if attempts else "Add subject"
                 if st.button(label, width="stretch", type="primary"):
@@ -408,8 +439,11 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 )
 
             difficulty = DIFFICULTY_VALUES[diff_label]
-            estimated = estimate_hours(ects, difficulty)
-            render_estimate_strip(ects, difficulty)
+            estimated = study_hours_control(
+                ects,
+                difficulty,
+                "custom_course",
+            )
 
             if st.button("Add custom course",
                          width="stretch", type="primary"):
@@ -1519,9 +1553,14 @@ def page_courses(user: dict):
                     )
                     edit_difficulty = DIFFICULTY_VALUES[
                         edit_difficulty_label]
-                    edit_estimated = estimate_hours(edit_ects, edit_difficulty)
 
-                render_estimate_strip(edit_ects, edit_difficulty)
+                edit_estimated = study_hours_control(
+                    edit_ects,
+                    edit_difficulty,
+                    f"edit_course_{c['id']}",
+                    current_hours=c["estimated_hours"],
+                    always_open=True,
+                )
 
                 other_names = [
                     item["name"] for item in courses
