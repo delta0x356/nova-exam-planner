@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import base64
+import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -1775,6 +1776,9 @@ def page_study_mode(user: dict):
         "Run a focus block and log the time into today's plan.",
         "focus",
     )
+    notice = st.session_state.pop("study_mode_notice", None)
+    if notice:
+        st.success(notice)
 
     courses = db.list_courses(user["id"])
     if not courses:
@@ -1872,12 +1876,22 @@ def page_study_mode(user: dict):
         f"**{label}** - {block_minutes} min focus / "
         f"{int(break_min)} min break")
 
-    timer_html = _timer_html(block_minutes, int(break_min))
-    timer_src = (
-        "data:text/html;base64,"
-        + base64.b64encode(timer_html.encode("utf-8")).decode("ascii")
+    reset_token = st.session_state.get("study_timer_reset_token", 0)
+    timer_key = (
+        f"{user['id']}:{target['kind']}:"
+        f"{target.get('session_id', 'course')}:{target['course_id']}:"
+        f"{block_minutes}:{int(break_min)}"
     )
-    st.iframe(timer_src, height=320, width="stretch")
+    st.html(
+        _timer_html(
+            block_minutes,
+            int(break_min),
+            storage_key=timer_key,
+            reset_token=reset_token,
+        ),
+        unsafe_allow_javascript=True,
+        width="stretch",
+    )
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1887,7 +1901,16 @@ def page_study_mode(user: dict):
             width="stretch",
         ):
             logged = log_study_minutes(user["id"], target, block_minutes)
-            st.toast(f"Logged {fmt_minutes(logged)} for {target['course_name']}.")
+            if logged:
+                st.session_state["study_timer_reset_token"] = reset_token + 1
+                st.session_state["study_mode_notice"] = (
+                    f"Logged {fmt_minutes(logged)} for "
+                    f"{target['course_name']}."
+                )
+            else:
+                st.session_state["study_mode_notice"] = (
+                    "Nothing was logged because this session is already done."
+                )
             st.rerun()
     with c2:
         if target["kind"] == "session":
@@ -1897,9 +1920,11 @@ def page_study_mode(user: dict):
                     target["planned_minutes"] - target["completed_minutes"])
                 if remaining_now > 0:
                     logged = log_study_minutes(user["id"], target, remaining_now)
-                    st.toast(
+                    st.session_state["study_timer_reset_token"] = reset_token + 1
+                    st.session_state["study_mode_notice"] = (
                         f"Completed {target['course_name']} "
-                        f"({fmt_minutes(logged)} logged).")
+                        f"({fmt_minutes(logged)} logged)."
+                    )
                     st.rerun()
         else:
             st.empty()
@@ -1940,7 +1965,15 @@ def log_study_minutes(user_id: int, target: dict, minutes: int) -> int:
     return minutes
 
 
-def _timer_html(focus_min: int, break_min: int, rounds: int = 1) -> str:
+def _timer_html(focus_min: int, break_min: int, rounds: int = 1,
+                storage_key: str = "default", reset_token: int = 0) -> str:
+    config = json.dumps({
+        "focus": int(focus_min) * 60,
+        "break": int(break_min) * 60,
+        "rounds": int(rounds),
+        "key": f"nova-study-timer:{storage_key}",
+        "resetToken": int(reset_token),
+    })
     return f"""
     <style>
         * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -1995,45 +2028,105 @@ def _timer_html(focus_min: int, break_min: int, rounds: int = 1) -> str:
         </div>
     </div>
     <script>
-    const FS={focus_min*60},BS={break_min*60},TR={rounds};
-    let rm=FS,ts=FS,iv=null,ib=false,sn=0;
+    const CFG={config};
+    let iv=null;
+    let state=loadState();
     const tD=document.getElementById('tD'),sL=document.getElementById('sL'),
           pB=document.getElementById('pB'),bS=document.getElementById('bS'),
           bP=document.getElementById('bP'),sC=document.getElementById('sC');
+
+    function fresh(){{
+        return {{
+            focus:CFG.focus, break:CFG.break, rounds:CFG.rounds,
+            resetToken:CFG.resetToken, rm:CFG.focus, ts:CFG.focus,
+            ib:false, sn:0, running:false, complete:false,
+            savedAt:Date.now()
+        }};
+    }}
+    function getStored(){{
+        try {{ return JSON.parse(localStorage.getItem(CFG.key)); }}
+        catch(e) {{ return null; }}
+    }}
+    function save(){{
+        state.savedAt=Date.now();
+        try {{ localStorage.setItem(CFG.key, JSON.stringify(state)); }}
+        catch(e) {{}}
+    }}
+    function valid(s){{
+        return s && s.focus===CFG.focus && s.break===CFG.break &&
+            s.rounds===CFG.rounds && s.resetToken===CFG.resetToken;
+    }}
+    function loadState(){{
+        const stored=getStored();
+        const s=valid(stored) ? stored : fresh();
+        if(s.running) advance(s, Math.floor((Date.now()-s.savedAt)/1000));
+        return s;
+    }}
+    function finish(s){{
+        s.running=false; s.complete=true; s.rm=0; s.ts=CFG.focus;
+    }}
+    function nextPhase(s){{
+        if(!s.ib){{
+            s.sn++;
+            if(s.sn>=CFG.rounds) {{ finish(s); return; }}
+            if(CFG.break<=0) {{
+                s.ib=false; s.rm=CFG.focus; s.ts=CFG.focus; return;
+            }}
+            s.ib=true; s.rm=CFG.break; s.ts=CFG.break;
+        }} else {{
+            s.ib=false; s.rm=CFG.focus; s.ts=CFG.focus;
+        }}
+    }}
+    function advance(s, elapsed){{
+        while(elapsed>0 && s.running && !s.complete){{
+            if(elapsed < s.rm) {{
+                s.rm -= elapsed; elapsed = 0;
+            }} else {{
+                elapsed -= s.rm;
+                s.rm = 0;
+                nextPhase(s);
+            }}
+        }}
+        s.savedAt=Date.now();
+    }}
     function rd(){{
-        const m=Math.floor(rm/60),s=rm%60;
+        const m=Math.floor(state.rm/60),s=state.rm%60;
         tD.textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
-        pB.style.width=((ts-rm)/ts*100).toFixed(1)+'%';
-        tD.className=ib?'td brk':'td';
-        pB.className=ib?'pf brk':'pf';
+        pB.style.width=((state.ts-state.rm)/state.ts*100).toFixed(1)+'%';
+        tD.className=state.ib?'td brk':'td';
+        pB.className=state.ib?'pf brk':'pf';
+        if(state.complete) {{
+            sL.textContent='Complete'; sL.className='sl b';
+            sC.textContent='Focus block complete';
+        }} else if(state.running) {{
+            sL.textContent=state.ib?'Break':'Focus';
+            sL.className=state.ib?'sl b':'sl f';
+            sC.textContent=state.ib?'Break running':'Focus running';
+        }} else if(state.rm < state.ts) {{
+            sL.textContent='Paused'; sL.className='sl p';
+            sC.textContent='Paused';
+        }} else {{
+            sL.textContent='Ready'; sL.className='sl';
+            sC.textContent='Focus block ready';
+        }}
+        bS.disabled=state.running || state.complete;
+        bP.disabled=!state.running || state.complete;
     }}
     function tk(){{
-        rm--;
-        if(rm<0){{
-            clearInterval(iv);iv=null;
-            if(!ib){{sn++;
-                sC.textContent='Focus block complete';
-                if(sn>=TR){{
-                    sL.textContent='Complete';sL.className='sl b';
-                    bS.disabled=true;bP.disabled=true;rm=0;rd();return;
-                }}
-                ib=true;rm=BS;ts=BS;sL.textContent='Break';sL.className='sl b';
-            }}else{{ib=false;rm=FS;ts=FS;sL.textContent='Focus';sL.className='sl f';}}
-            rd();go();return;
+        advance(state,1); save(); rd();
+        if(!state.running || state.complete){{
+            clearInterval(iv); iv=null;
         }}
-        rd();
     }}
     function go(){{if(iv)return;
-        sL.textContent=ib?'Break':'Focus';
-        sL.className=ib?'sl b':'sl f';
-        iv=setInterval(tk,1000);bS.disabled=true;bP.disabled=false;}}
+        state.running=true; state.complete=false; save(); rd();
+        iv=setInterval(tk,1000);}}
     function pa(){{if(iv){{clearInterval(iv);iv=null;
-        sL.textContent='Paused';sL.className='sl p';
-        bS.disabled=false;bP.disabled=true;}}}}
-    function re(){{clearInterval(iv);iv=null;ib=false;rm=FS;ts=FS;sn=0;
-        sL.textContent='Ready';sL.className='sl';
-        sC.textContent='Focus block ready';
-        bS.disabled=false;bP.disabled=true;rd();}}
+        advance(state, Math.floor((Date.now()-state.savedAt)/1000));
+        state.running=false; save(); rd();}}}}
+    function re(){{clearInterval(iv);iv=null;state=fresh();save();rd();}}
+    window.addEventListener('beforeunload', save);
+    if(state.running && !state.complete) iv=setInterval(tk,1000);
     rd();
     </script>
     """
