@@ -491,6 +491,37 @@ button[kind="primaryFormSubmit"] *,
     font-size: 0.78rem;
 }
 
+.study-estimate-strip {
+    align-items: center;
+    background: #edf5ff;
+    border: 1px solid #d9e8fb;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.7rem;
+    margin: 0.55rem 0;
+    padding: 0.68rem 0.8rem;
+}
+
+.study-estimate-strip span {
+    color: #2f65c8;
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.study-estimate-strip strong {
+    color: #245cc8;
+    font-size: 1.18rem;
+    line-height: 1;
+}
+
+.study-estimate-strip small {
+    color: #4f5f72;
+    font-size: 0.82rem;
+}
+
 .course-line {
     background: var(--panel);
     border: 1px solid var(--line);

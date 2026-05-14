@@ -40,19 +40,13 @@ COURSE_COLORS = [
     "#222222", "#444444", "#666666", "#888888", "#aaaaaa",
 ]
 
-STUDY_HOURS_PER_ECTS = 3.0
 DEFAULT_FOCUS_MINUTES = 45
-DIFFICULTY_MULTIPLIERS = {
-    "Low": 0.8,
-    "Medium": 1.0,
-    "High": 1.2,
-}
 DIFFICULTY_VALUES = {
     "Low": 1,
     "Medium": 3,
     "High": 5,
 }
-DIFFICULTY_LABELS = tuple(DIFFICULTY_MULTIPLIERS)
+DIFFICULTY_LABELS = tuple(DIFFICULTY_VALUES)
 SEMESTERS = ("Fall", "Spring")
 FALL_PERIODS = {"Fall", "S1", "T1", "T2"}
 SPRING_PERIODS = {"Spring", "S2", "T3", "T4"}
@@ -95,9 +89,33 @@ def difficulty_value(value) -> int:
         return DIFFICULTY_VALUES["Medium"]
 
 
+def study_hours_per_ects(difficulty: int) -> float:
+    return 1.5 + 0.5 * int(difficulty)
+
+
 def estimate_hours(ects: float, difficulty: int) -> float:
-    multiplier = DIFFICULTY_MULTIPLIERS[difficulty_label(difficulty)]
-    return round(ects * STUDY_HOURS_PER_ECTS * multiplier, 1)
+    return round(float(ects) * study_hours_per_ects(difficulty), 1)
+
+
+def _estimate_strip_html(ects: float, difficulty: int) -> str:
+    estimated = estimate_hours(ects, difficulty)
+    formula = (
+        f"= {ects:g} ECTS × (1.5 + 0.5 × {int(difficulty)}) difficulty"
+    )
+    return (
+        '<div class="study-estimate-strip">'
+        '<span>Estimated study hours</span>'
+        f'<strong>{fmt_hours(estimated)}</strong>'
+        f'<small>{h(formula)}</small>'
+        '</div>'
+    )
+
+
+def render_estimate_strip(ects: float, difficulty: int) -> None:
+    st.markdown(
+        _estimate_strip_html(ects, difficulty),
+        unsafe_allow_html=True,
+    )
 
 
 def default_exam_date(period: str, today: Optional[dt.date] = None) -> dt.date:
@@ -315,6 +333,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
 
                 difficulty = DIFFICULTY_VALUES[diff_label]
                 estimated = estimate_hours(subject["ects"], difficulty)
+                render_estimate_strip(subject["ects"], difficulty)
 
                 label = "Add another attempt" if attempts else "Add subject"
                 if st.button(label, width="stretch", type="primary"):
@@ -378,6 +397,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
 
             difficulty = DIFFICULTY_VALUES[diff_label]
             estimated = estimate_hours(ects, difficulty)
+            render_estimate_strip(ects, difficulty)
 
             if st.button("Add custom course",
                          width="stretch", type="primary"):
@@ -1349,7 +1369,9 @@ def page_courses(user: dict):
                         edit_difficulty_label]
                     edit_estimated = estimate_hours(edit_ects, edit_difficulty)
 
-                    other_names = [
+                render_estimate_strip(edit_ects, edit_difficulty)
+
+                other_names = [
                     item["name"] for item in courses
                     if item["id"] != c["id"]
                 ]
