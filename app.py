@@ -123,28 +123,42 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
                         current_hours: Optional[float] = None,
                         always_open: bool = False) -> float:
     suggested = estimate_hours(ects, difficulty)
-    render_estimate_strip(ects, difficulty)
 
     key_base = f"{key_prefix}_{float(ects):g}_{int(difficulty)}"
     key_base = key_base.replace(".", "_")
     value = float(current_hours) if current_hours is not None else suggested
-    if not always_open:
-        adjust = st.toggle(
-            "Adjust study hours",
-            key=f"{key_base}_adjust_hours",
-        )
-        if not adjust:
-            return suggested
+    if always_open:
+        render_estimate_strip(ects, difficulty)
+        return float(st.number_input(
+            "Study hours",
+            min_value=0.5,
+            max_value=300.0,
+            value=value,
+            step=0.5,
+            format="%.1f",
+            key=f"{key_base}_study_hours",
+        ))
 
-    return float(st.number_input(
-        "Study hours",
-        min_value=0.5,
-        max_value=300.0,
-        value=value,
-        step=0.5,
-        format="%.1f",
-        key=f"{key_base}_study_hours",
-    ))
+    estimate_col, button_col = st.columns(
+        [5, 1], gap="small", vertical_alignment="center")
+    with estimate_col:
+        render_estimate_strip(ects, difficulty)
+    with button_col:
+        with st.popover(
+            "Adjust hours",
+            key=f"{key_base}_adjust_hours",
+            width="stretch",
+        ):
+            value = st.number_input(
+                "Study hours",
+                min_value=0.5,
+                max_value=300.0,
+                value=value,
+                step=0.5,
+                format="%.1f",
+                key=f"{key_base}_study_hours",
+            )
+    return float(value)
 
 
 def default_exam_date(period: str, today: Optional[dt.date] = None) -> dt.date:
