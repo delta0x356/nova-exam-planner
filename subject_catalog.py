@@ -5,6 +5,8 @@ MASTER_OF_ECONOMICS = "Master of Economics"
 MASTER_OF_MANAGEMENT = "Master of Management"
 MASTER_OF_BUSINESS_ANALYTICS = "Master of Business Analytics"
 BACHELOR_OF_ECONOMICS = "Bachelor's in Economics"
+BACHELOR_OF_MANAGEMENT = "Bachelor's in Management"
+BACHELOR_OF_OCEAN_STUDIES = "Bachelor's in Ocean Studies"
 
 PROGRAMS = (
     MASTER_OF_FINANCE,
@@ -12,6 +14,8 @@ PROGRAMS = (
     MASTER_OF_MANAGEMENT,
     MASTER_OF_BUSINESS_ANALYTICS,
     BACHELOR_OF_ECONOMICS,
+    BACHELOR_OF_MANAGEMENT,
+    BACHELOR_OF_OCEAN_STUDIES,
 )
 
 PROGRAM_GROUPS = {
@@ -32,6 +36,12 @@ PROGRAM_GROUPS = {
         "bachelor_economics_elective",
         "general_elective",
     ),
+    BACHELOR_OF_MANAGEMENT: (
+        "mandatory",
+        "bachelor_management_elective",
+        "general_elective",
+    ),
+    BACHELOR_OF_OCEAN_STUDIES: ("mandatory",),
 }
 
 GROUP_LABELS = {
@@ -57,6 +67,14 @@ GROUP_LABELS = {
         "mandatory": "Mandatory",
         "bachelor_economics_elective": "Economics electives",
         "general_elective": "General electives",
+    },
+    BACHELOR_OF_MANAGEMENT: {
+        "mandatory": "Mandatory",
+        "bachelor_management_elective": "Management electives",
+        "general_elective": "General electives",
+    },
+    BACHELOR_OF_OCEAN_STUDIES: {
+        "mandatory": "Mandatory",
     },
 }
 
@@ -792,6 +810,102 @@ Bachelor's in Economics|general_elective|1473|S1|Long-term Internship|7
 Bachelor's in Economics|general_elective|1473|S2|Long-term Internship|7
 Bachelor's in Economics|general_elective|1492|S1|Short-term Internship|3.5
 Bachelor's in Economics|general_elective|1492|S2|Short-term Internship|3.5
+Bachelor's in Management|mandatory|1117|S1|Principles of Microeconomics|7
+Bachelor's in Management|mandatory|1118|S2|Principles of Macroeconomics|7
+Bachelor's in Management|mandatory|1217|S1|Financial Accounting|7
+Bachelor's in Management|mandatory|1216|T4|Business Principles|3.5
+Bachelor's in Management|mandatory|1218|S1|Management Accounting|7
+Bachelor's in Management|mandatory|1219|S1|Finance|7
+Bachelor's in Management|mandatory|1220|S2|Marketing|7
+Bachelor's in Management|mandatory|1221|S1|Operations Management|7
+Bachelor's in Management|mandatory|1222|S2|Organizational Behavior|7
+Bachelor's in Management|mandatory|1223|S1|Strategy|7
+Bachelor's in Management|mandatory|1309|S1|Calculus I|7
+Bachelor's in Management|mandatory|1310|S2|Calculus II|7
+Bachelor's in Management|mandatory|1311|S1|Linear Algebra with Programming|7
+Bachelor's in Management|mandatory|1312|S2|Data Analysis and Probability|7
+Bachelor's in Management|mandatory|1313|S2|Statistics for Economics and Management|7
+Bachelor's in Management|mandatory|1317|S1|Data Handling|3.5
+Bachelor's in Management|mandatory|1317|S2|Data Handling|3.5
+Bachelor's in Management|mandatory|1318|S2|Computer Programming|7
+Bachelor's in Management|mandatory|1462|S1|Communication and Leadership|4
+Bachelor's in Management|mandatory|1463|T3|Ethics|3.5
+Bachelor's in Management|mandatory|1464|T1|Law in Economics and Business|3.5
+Bachelor's in Management|mandatory|1469|T3|Human Behavior and Decision Making|3.5
+Bachelor's in Management|mandatory|1471|S1|Careers with Impact|4
+Bachelor's in Management|mandatory|1471|S2|Careers with Impact|4
+Bachelor's in Management|bachelor_management_elective|1224|S1|Information Systems|7
+Bachelor's in Management|bachelor_management_elective|1224|S2|Information Systems|7
+Bachelor's in Management|bachelor_management_elective|1225|S1|Business History|7
+Bachelor's in Management|bachelor_management_elective|1226|S1|Entrepreneurship|7
+Bachelor's in Management|bachelor_management_elective|1226|S2|Entrepreneurship|7
+Bachelor's in Management|bachelor_management_elective|1227|S1|International Management|7
+Bachelor's in Management|bachelor_management_elective|1227|S2|International Management|7
+Bachelor's in Management|bachelor_management_elective|1228|S1|Global Business Environment|7
+Bachelor's in Management|bachelor_management_elective|1228|S2|Global Business Environment|7
+Bachelor's in Management|bachelor_management_elective|1229|S1|Business Seminar|7
+Bachelor's in Management|bachelor_management_elective|1229|S2|Business Seminar|7
+Bachelor's in Management|bachelor_management_elective|1315|S1|Modeling and Optimization|7
+Bachelor's in Management|bachelor_management_elective|1473|S1|Long-term Internship|7
+Bachelor's in Management|bachelor_management_elective|1473|S2|Long-term Internship|7
+Bachelor's in Management|bachelor_management_elective|1492|S1|Short-term Internship|3.5
+Bachelor's in Management|bachelor_management_elective|1492|S2|Short-term Internship|3.5
+Bachelor's in Management|general_elective|1121|S1|Seminar in European Economics|7
+Bachelor's in Management|general_elective|1123|S1|Development Economics|7
+Bachelor's in Management|general_elective|1125|S1|Advanced Microeconomics|7
+Bachelor's in Management|general_elective|1125|S2|Advanced Microeconomics|7
+Bachelor's in Management|general_elective|1126|S1|Industrial Organization|7
+Bachelor's in Management|general_elective|1126|S2|Industrial Organization|7
+Bachelor's in Management|general_elective|1129|S1|Public Economics|7
+Bachelor's in Management|general_elective|1129|S2|Public Economics|7
+Bachelor's in Management|general_elective|1130|T1|Behavioral Economics|3.5
+Bachelor's in Management|general_elective|1130|T3|Behavioral Economics|3.5
+Bachelor's in Management|general_elective|1131|T3|Environment and Natural Resources Economics|3.5
+Bachelor's in Management|general_elective|1132|T3|History of Economic Thought|3.5
+Bachelor's in Management|general_elective|1133|S1|International Macroeconomics|7
+Bachelor's in Management|general_elective|1133|S2|International Macroeconomics|7
+Bachelor's in Management|general_elective|1134|S1|International Trade|7
+Bachelor's in Management|general_elective|1134|S2|International Trade|7
+Bachelor's in Management|general_elective|1314|S1|Econometrics|7
+Bachelor's in Management|general_elective|1314|S2|Econometrics|7
+Bachelor's in Management|general_elective|1319|S1|Multivariate Statistics|7
+Bachelor's in Management|general_elective|1319|S2|Multivariate Statistics|7
+Bachelor's in Management|general_elective|1467|S1|European Law|7
+Bachelor's in Management|general_elective|1467|S2|European Law|7
+Bachelor's in Management|general_elective|1472|T1|Business Law|3.5
+Bachelor's in Management|general_elective|1472|T3|Business Law|3.5
+Bachelor's in Ocean Studies|mandatory|1700|T1|Biology Fundamentals|7
+Bachelor's in Ocean Studies|mandatory|1701|S1|Principles of Oceanography|7
+Bachelor's in Ocean Studies|mandatory|1702|T4|Fundamentals of Geology|7
+Bachelor's in Ocean Studies|mandatory|1703|S2|Marine Ecosystems and Sustainable Development|7
+Bachelor's in Ocean Studies|mandatory|1708|T3|Interdisciplinary Ocean Challenges|7
+Bachelor's in Ocean Studies|mandatory|1709|T4|Ocean Challenges of Coastal Cities|7
+Bachelor's in Ocean Studies|mandatory|1117|S1|Principles of Microeconomics|7
+Bachelor's in Ocean Studies|mandatory|1131|T1|Environment and Natural Resources Economics|7
+Bachelor's in Ocean Studies|mandatory|1312|S1|Data Analysis and Probability|7
+Bachelor's in Ocean Studies|mandatory|1313|S1|Statistics for Economics and Management|7
+Bachelor's in Ocean Studies|mandatory|1494|S1|Introduction to Law|7
+Bachelor's in Ocean Studies|mandatory|1495|S2|International Law of the Sea|7
+Bachelor's in Ocean Studies|mandatory|1496|T3|Geopolitics and International Relations|7
+Bachelor's in Ocean Studies|mandatory|1497|T3|Oceans and History|7
+Bachelor's in Ocean Studies|mandatory|1498|T4|Ocean Policies, Sustainability and Governance|7
+Bachelor's in Ocean Studies|mandatory|500001|T1|Aquaculture and Fisheries Economics|7
+Bachelor's in Ocean Studies|mandatory|500002|T3|Blue Infrastructures Planning and Nature-based Solutions|7
+Bachelor's in Ocean Studies|mandatory|500003|S1|Climate Change and Ocean|7
+Bachelor's in Ocean Studies|mandatory|500004|S1|Data Analysis, AI and Integrated Systems|7
+Bachelor's in Ocean Studies|mandatory|500005|S2|Field LAB|7
+Bachelor's in Ocean Studies|mandatory|500006|S1|Geographical Information Systems|7
+Bachelor's in Ocean Studies|mandatory|500007|S2|Law and Sustainability|7
+Bachelor's in Ocean Studies|mandatory|500008|T3|Living-Resources Protection and Restoration|7
+Bachelor's in Ocean Studies|mandatory|500009|S1|Marine and Maritime Spatial Planning and Management|7
+Bachelor's in Ocean Studies|mandatory|500010|T3|Marine Litter and Waste Management|7
+Bachelor's in Ocean Studies|mandatory|500011|S1|Marine Technologies and Innovation|7
+Bachelor's in Ocean Studies|mandatory|500012|T4|Maritime Security and International Relations|7
+Bachelor's in Ocean Studies|mandatory|500013|T4|Ocean and Arts|7
+Bachelor's in Ocean Studies|mandatory|500014|T1|Ocean Energy|7
+Bachelor's in Ocean Studies|mandatory|500015|S2|Ocean Seminar|7
+Bachelor's in Ocean Studies|mandatory|500016|S2|Shipping and International Commercial and Maritime Law|7
+Bachelor's in Ocean Studies|mandatory|500017|T4|The Ocean's Heritage|7
 """
 
 
