@@ -146,6 +146,11 @@ def default_exam_date_for_semester(semester: str,
     return candidate
 
 
+def future_date_value(value: dt.date, today: Optional[dt.date] = None) -> dt.date:
+    today = today or dt.date.today()
+    return max(value, today)
+
+
 def default_semester(today: Optional[dt.date] = None) -> str:
     today = today or dt.date.today()
     return "Fall" if today.month >= 8 or today.month == 1 else "Spring"
@@ -325,7 +330,8 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 with d2:
                     exam_date = st.date_input(
                         "Exam date",
-                        exam_default,
+                        future_date_value(exam_default, today),
+                        min_value=today,
                         key=(
                             f"subject_loader_exam_"
                             f"{selected_key}_{selected_semester}"
@@ -390,9 +396,14 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     key="custom_course_difficulty",
                 )
             with d2:
+                today = dt.date.today()
                 exam_date = st.date_input(
                     "Exam date",
-                    default_exam_date_for_semester(custom_semester),
+                    future_date_value(
+                        default_exam_date_for_semester(custom_semester),
+                        today,
+                    ),
+                    min_value=today,
                     key=f"custom_course_exam_{custom_semester}",
                 )
 
@@ -432,7 +443,10 @@ def _render_study_settings(user: dict):
                 "Max hours / day", 1, 16, int(con["max_hours_per_day"]))
         with c3:
             start_date = st.date_input(
-                "Plan start date", default_start)
+                "Plan start date",
+                future_date_value(default_start),
+                min_value=dt.date.today(),
+            )
 
         preferred_days = st.multiselect(
             "Preferred study days",
@@ -1353,7 +1367,9 @@ def page_courses(user: dict):
                     )
                 with e2:
                     edit_exam = st.date_input(
-                        "Exam date", c["exam_date"],
+                        "Exam date",
+                        future_date_value(c["exam_date"]),
+                        min_value=dt.date.today(),
                         key=f"edit_exam_{c['id']}",
                     )
                     current_difficulty = difficulty_label(

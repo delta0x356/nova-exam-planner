@@ -122,8 +122,7 @@ div[role="alert"] svg {
 .stTextInput input,
 .stNumberInput input,
 .stDateInput input,
-textarea,
-input {
+textarea {
     background: #ffffff !important;
     border-color: var(--line) !important;
     border-radius: 10px !important;
