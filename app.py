@@ -98,23 +98,29 @@ def estimate_hours(ects: float, difficulty: int) -> float:
     return round(float(ects) * study_hours_per_ects(difficulty), 1)
 
 
-def _estimate_strip_html(ects: float, difficulty: int) -> str:
-    estimated = estimate_hours(ects, difficulty)
-    formula = (
-        f"= {ects:g} ECTS × (1.5 + 0.5 × {int(difficulty)}) difficulty"
-    )
+def _estimate_strip_html(ects: float, difficulty: int,
+                         shown_hours: Optional[float] = None) -> str:
+    suggested = estimate_hours(ects, difficulty)
+    shown = float(shown_hours) if shown_hours is not None else suggested
+    if abs(shown - suggested) > 0.01:
+        detail = f"Adjusted from {fmt_hours(suggested)} suggested"
+    else:
+        detail = (
+            f"= {ects:g} ECTS × (1.5 + 0.5 × {int(difficulty)}) difficulty"
+        )
     return (
         '<div class="study-estimate-strip">'
         '<span>Estimated study hours</span>'
-        f'<strong>{fmt_hours(estimated)}</strong>'
-        f'<small>{h(formula)}</small>'
+        f'<strong>{fmt_hours(shown)}</strong>'
+        f'<small>{h(detail)}</small>'
         '</div>'
     )
 
 
-def render_estimate_strip(ects: float, difficulty: int) -> None:
+def render_estimate_strip(ects: float, difficulty: int,
+                          shown_hours: Optional[float] = None) -> None:
     st.markdown(
-        _estimate_strip_html(ects, difficulty),
+        _estimate_strip_html(ects, difficulty, shown_hours),
         unsafe_allow_html=True,
     )
 
@@ -126,9 +132,11 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
 
     key_base = f"{key_prefix}_{float(ects):g}_{int(difficulty)}"
     key_base = key_base.replace(".", "_")
+    hours_key = f"{key_base}_study_hours"
     value = float(current_hours) if current_hours is not None else suggested
     if always_open:
-        render_estimate_strip(ects, difficulty)
+        shown = float(st.session_state.get(hours_key, value))
+        render_estimate_strip(ects, difficulty, shown)
         return float(st.number_input(
             "Study hours",
             min_value=0.5,
@@ -136,13 +144,14 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
             value=value,
             step=0.5,
             format="%.1f",
-            key=f"{key_base}_study_hours",
+            key=hours_key,
         ))
 
+    shown = float(st.session_state.get(hours_key, value))
     estimate_col, button_col = st.columns(
         [5, 1], gap="small", vertical_alignment="center")
     with estimate_col:
-        render_estimate_strip(ects, difficulty)
+        render_estimate_strip(ects, difficulty, shown)
     with button_col:
         with st.popover(
             "Adjust hours",
@@ -156,7 +165,7 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
                 value=value,
                 step=0.5,
                 format="%.1f",
-                key=f"{key_base}_study_hours",
+                key=hours_key,
             )
     return float(value)
 
