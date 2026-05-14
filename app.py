@@ -1761,7 +1761,7 @@ def page_study_plan(user: dict):
 def page_customize(user: dict):
     render_page_title(
         "Customize",
-        "Adjust one course at a time.",
+        "Adjust one course and fine-tune its sessions.",
         "edit",
     )
 
@@ -1780,33 +1780,95 @@ def page_customize(user: dict):
     review_count = int((balance["diff"].abs() >= 10).sum())
 
     course_by_name = {c["name"]: c for c in courses}
-    course_names = [c["name"] for c in sorted(
-        courses, key=lambda course: course["exam_date"]
-    )]
+    course_names = [
+        c["name"] for c in sorted(courses, key=lambda c: c["exam_date"])
+    ]
     default_course = (
         str(balance.iloc[0]["course_name"])
         if not balance.empty and str(balance.iloc[0]["course_name"]) in course_by_name
         else course_names[0]
     )
 
-    c1, c2 = st.columns([0.62, 0.38])
-    with c1:
-        selected_course = st.selectbox(
-            "Course",
-            course_names,
-            index=course_names.index(default_course),
-        )
-    with c2:
-        view = st.selectbox(
-            "Sessions",
-            ["Upcoming", "This week", "All"],
-        )
-
+    selected_course = st.selectbox(
+        "Course to adjust",
+        course_names,
+        index=course_names.index(default_course),
+    )
     selected = course_by_name[selected_course]
-    filtered_sessions = sessions_df[
+    today = dt.date.today()
+    course_sessions = sessions_df[
         sessions_df["course_id"] == selected["id"]
     ].copy()
-    today = dt.date.today()
+    planned_min = int(course_sessions["planned_minutes"].sum())
+    completed_min = int(course_sessions["completed_minutes"].sum())
+    target_min = int(round(float(selected["estimated_hours"]) * 60))
+    diff_min = planned_min - target_min
+    diff_label = "On target"
+    if abs(diff_min) >= 5:
+        diff_label = (
+            f"+{fmt_minutes(diff_min)}"
+            if diff_min > 0 else f"-{fmt_minutes(abs(diff_min))}"
+        )
+
+    _metric_grid([
+        ("Planned", fmt_minutes(planned_min), "Current schedule"),
+        ("Target", fmt_minutes(target_min), "Course study hours"),
+        ("Done", fmt_minutes(completed_min), "Already logged"),
+        ("Balance", diff_label, "Planned minus target"),
+    ])
+
+    with st.form(f"customize_course_target_{selected['id']}"):
+        target_hours = st.number_input(
+            "Target study hours",
+            min_value=0.5,
+            max_value=300.0,
+            value=float(selected["estimated_hours"]),
+            step=0.5,
+            format="%.1f",
+        )
+        apply_target = st.form_submit_button(
+            "Apply and rebalance future sessions",
+            type="primary",
+            width="stretch",
+        )
+        if apply_target:
+            db.upsert_course(
+                user["id"],
+                selected["name"],
+                selected["exam_date"],
+                float(selected["ects"]),
+                int(selected["difficulty"]),
+                float(target_hours),
+                course_id=int(selected["id"]),
+            )
+            updated = rebalance_course_sessions(
+                sessions_df.copy(),
+                int(selected["id"]),
+                float(target_hours) * 60,
+            )
+            changed = updated[updated["course_id"] == selected["id"]]
+            for _, row in changed.iterrows():
+                planned = max(
+                    int(row["planned_minutes"]),
+                    int(row["completed_minutes"]),
+                )
+                if planned <= 0 and int(row["completed_minutes"]) <= 0:
+                    db.delete_session(user["id"], int(row["id"]))
+                else:
+                    db.update_session_planned(
+                        user["id"], int(row["id"]), planned)
+            st.toast(f"Updated {selected_course}.")
+            st.rerun()
+
+    st.divider()
+    view = st.segmented_control(
+        "Sessions to edit",
+        ["Upcoming", "This week", "All"],
+        default="Upcoming",
+        key=f"customize_view_{selected['id']}",
+    )
+
+    filtered_sessions = course_sessions.copy()
     if view == "Upcoming":
         filtered_sessions = filtered_sessions[
             filtered_sessions["session_date"] >= today
@@ -1819,26 +1881,15 @@ def page_customize(user: dict):
             & (filtered_sessions["session_date"] < end)
         ]
 
-    selected_balance = balance[balance["course_id"] == selected["id"]]
-    if not selected_balance.empty:
-        st.markdown(_balance_html(selected_balance), unsafe_allow_html=True)
-    if st.button("Rebalance selected course", width="stretch"):
-        sdf = rebalance_course_sessions(
-            sessions_df.copy(), selected["id"],
-            selected["estimated_hours"] * 60)
-        for _, row in sdf.iterrows():
-            db.update_session_planned(
-                user["id"], int(row["id"]), int(row["planned_minutes"]))
-        st.toast(f"Rebalanced {selected_course}.")
-        st.rerun()
-
     edit_df = filtered_sessions[[
-        "id", "session_date", "planned_minutes",
+        "id", "session_date", "planned_minutes", "completed_minutes",
     ]].rename(columns={
         "session_date": "Date",
-        "planned_minutes": "Minutes",
+        "planned_minutes": "Planned minutes",
+        "completed_minutes": "Completed",
     }).copy()
-    edit_df["Minutes"] = edit_df["Minutes"].astype(int)
+    edit_df["Planned minutes"] = edit_df["Planned minutes"].astype(int)
+    edit_df["Completed"] = edit_df["Completed"].astype(int)
 
     if edit_df.empty:
         st.info("No sessions match this view.")
@@ -1850,26 +1901,36 @@ def page_customize(user: dict):
             column_config={
                 "Date": st.column_config.DateColumn(
                     "Date", disabled=True, format="DD MMM YYYY"),
-                "Minutes": st.column_config.NumberColumn(
-                    "Minutes", min_value=0, max_value=480, step=5),
+                "Planned minutes": st.column_config.NumberColumn(
+                    "Planned minutes", min_value=0, max_value=480, step=5),
+                "Completed": st.column_config.NumberColumn(
+                    "Completed", disabled=True),
             },
-            column_order=["Date", "Minutes"],
+            column_order=["Date", "Planned minutes", "Completed"],
             width="stretch",
             hide_index=True,
             num_rows="fixed",
-            height=180,
+            height=min(420, max(180, len(edit_df) * 38 + 44)),
             key=f"plan_editor_{selected['id']}_{view}",
         )
 
-    if st.button("Save visible sessions", width="stretch",
-                 type="primary", disabled=edit_df.empty):
+    if st.button(
+        "Save session edits",
+        width="stretch",
+        type="primary",
+        disabled=edit_df.empty,
+    ):
         for session_id, row in edited.iterrows():
-            db.update_session_planned(
-                user["id"], int(session_id), int(row["Minutes"]))
-        st.toast("Edits saved.")
+            completed = int(row.get("Completed", 0))
+            planned = max(int(row["Planned minutes"]), completed)
+            if planned <= 0 and completed <= 0:
+                db.delete_session(user["id"], int(session_id))
+            else:
+                db.update_session_planned(user["id"], int(session_id), planned)
+        st.toast("Session edits saved.")
         st.rerun()
 
-    with st.expander(f"Plan balance ({review_count} to review)",
+    with st.expander(f"All course balance ({review_count} to review)",
                      expanded=False):
         st.markdown(_balance_html(balance), unsafe_allow_html=True)
 

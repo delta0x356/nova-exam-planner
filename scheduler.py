@@ -181,23 +181,22 @@ def rebalance_course_sessions(sessions_df: pd.DataFrame,
     current_total  = rows["planned_minutes"].sum()
     locked_total   = current_total - eligible_total
 
-    need = target_total_minutes - locked_total
-    if need <= 0 or eligible.sum() == 0:
+    if eligible.sum() == 0:
         return sessions_df
 
-    per_row = max(round(need / eligible.sum() / 5) * 5, 5)
-    remainder = need
+    needed_future = _round_to_5(max(0, target_total_minutes - locked_total))
+    idxs = rows.loc[eligible].sort_values("_date").index.tolist()
+    base = _floor_to_5(needed_future / len(idxs)) if idxs else 0
+    for idx in idxs:
+        sessions_df.at[idx, "planned_minutes"] = int(base)
 
-    for idx in rows.loc[eligible].index:
-        alloc = min(per_row, remainder)
-        alloc = max(round(alloc / 5) * 5, 0)
-        sessions_df.at[idx, "planned_minutes"] = int(alloc)
-        remainder -= alloc
-
-    # Put the final remainder on the last eligible row.
-    idxs = rows.loc[eligible].index.tolist()
-    if remainder > 0 and idxs:
-        sessions_df.at[idxs[-1], "planned_minutes"] += int(round(remainder / 5) * 5)
+    remainder = needed_future - base * len(idxs)
+    i = 0
+    while remainder >= ROUNDING_MINUTES and idxs:
+        idx = idxs[i % len(idxs)]
+        sessions_df.at[idx, "planned_minutes"] += ROUNDING_MINUTES
+        remainder -= ROUNDING_MINUTES
+        i += 1
 
     return sessions_df
 
