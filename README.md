@@ -39,7 +39,7 @@ All course, constraint, and session rows are scoped by `user_id`.
 
 - Register and log in with local accounts
 - Add courses manually or from Nova subject lists
-- Estimate study time from Nova's 28h per ECTS workload, class hours, and difficulty
+- Estimate study time from ECTS, class hours, exam weight, and difficulty
 - Generate a balanced study plan before each exam
 - Track completed sessions and redistribute missed study time
 - Show a cached daily motivational quote on the dashboard
