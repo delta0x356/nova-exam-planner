@@ -9,6 +9,7 @@ from typing import Optional
 DATA_DIR = "data"
 DB_PATH = os.path.join(DATA_DIR, "nova.db")
 DEFAULT_COUNTRY = "PT"
+DEFAULT_EXAM_WEIGHT = 0.5
 
 
 def _ensure_dir():
@@ -53,6 +54,7 @@ def init_db():
                 exam_date       DATE NOT NULL,
                 ects            REAL NOT NULL,
                 difficulty      INTEGER NOT NULL,
+                exam_weight     REAL DEFAULT 0.5,
                 estimated_hours REAL NOT NULL,
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -85,6 +87,18 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sessions_course ON study_sessions(course_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_date   ON study_sessions(session_date);
         """)
+
+        course_cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(courses)")
+        }
+        if "exam_weight" not in course_cols:
+            conn.execute(
+                "ALTER TABLE courses ADD COLUMN exam_weight REAL DEFAULT 0.5"
+            )
+            conn.execute(
+                "UPDATE courses SET exam_weight = ? WHERE exam_weight IS NULL",
+                (DEFAULT_EXAM_WEIGHT,),
+            )
 
 
 def create_user(username: str, email: Optional[str], password_hash: str,
@@ -176,24 +190,27 @@ def get_course(user_id: int, course_id: int) -> Optional[dict]:
 
 def upsert_course(user_id: int, name: str, exam_date: dt.date,
                   ects: float, difficulty: int, estimated_hours: float,
+                  exam_weight: float = DEFAULT_EXAM_WEIGHT,
                   course_id: Optional[int] = None) -> int:
     """Save a course and return its id."""
     with get_connection() as conn:
         if course_id:
             conn.execute(
                 """UPDATE courses
-                   SET name=?, exam_date=?, ects=?, difficulty=?, estimated_hours=?
+                   SET name=?, exam_date=?, ects=?, difficulty=?,
+                       exam_weight=?, estimated_hours=?
                    WHERE id=? AND user_id=?""",
                 (name, exam_date.isoformat(), ects, difficulty,
-                 estimated_hours, course_id, user_id),
+                 exam_weight, estimated_hours, course_id, user_id),
             )
             return course_id
         cur = conn.execute(
             """INSERT INTO courses
-               (user_id, name, exam_date, ects, difficulty, estimated_hours)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (user_id, name, exam_date, ects, difficulty, exam_weight,
+                estimated_hours)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (user_id, name, exam_date.isoformat(), ects, difficulty,
-             estimated_hours),
+             exam_weight, estimated_hours),
         )
         return cur.lastrowid
 
