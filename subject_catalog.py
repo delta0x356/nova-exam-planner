@@ -96,7 +96,6 @@ mandatory|2269|T1|Empirical Methods for Finance|3.5
 mandatory|2270|T2|Financial Modelling|3.5
 mandatory|2253|Fall|Corporate Finance|7
 mandatory|2578|Fall|Mastering Your Career|2
-mandatory|MODULES|Spring|Modules|2
 finance_elective|2260|A|Nova Students Portfolio|7
 finance_elective|2232|S1|Applied Corporate Finance|7
 finance_elective|2206|S1|Banking|7
@@ -308,7 +307,6 @@ Master's in Economics|mandatory|2175|Fall|Econometrics|7
 Master's in Economics|mandatory|2578|Fall|Mastering Your Career|2
 Master's in Economics|mandatory|2168|Spring|Macroeconometrics|7
 Master's in Economics|mandatory|2165|Spring|Microeconometrics|7
-Master's in Economics|mandatory|MODULES|Spring|Modules|2
 Master's in Economics|economics_elective|2206|S1|Banking|7
 Master's in Economics|economics_elective|2652|S1|Fundamentals on Environment and Sustainability|7
 Master's in Economics|economics_elective|2477|S1|Introduction to Programming|7
@@ -540,7 +538,6 @@ Master's in Business Analytics|mandatory|2578|S1|Mastering Your Career|2
 Master's in Business Analytics|mandatory|2606|T3|Data Ecosystems and Governance in Organizations|3.5
 Master's in Business Analytics|mandatory|2767|T3|Machine Learning|3.5
 Master's in Business Analytics|mandatory|2761|T3|Digital Experimentation & Causal Analysis|3.5
-Master's in Business Analytics|mandatory|MODULES|Spring|Modules|2
 Master's in Business Analytics|business_analytics_elective|2599|T1|Project Scoping|3.5
 Master's in Business Analytics|business_analytics_elective|2610|S2|Business Analytics Special Project|7
 Master's in Business Analytics|business_analytics_elective|2612|T3|Advanced Programming for Data Science|3.5
@@ -919,6 +916,8 @@ def _read_subjects() -> tuple[dict, ...]:
             group, code, period, name, ects = parts
         else:
             program, group, code, period, name, ects = parts
+        if code.upper() == "MODULES" or name.strip().lower() == "modules":
+            continue
         ects_value = float(ects)
         if ects_value <= 0:
             continue

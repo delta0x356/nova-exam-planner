@@ -33,7 +33,6 @@ from scheduler import (
 APP_TITLE = "Nova Exam Planner"
 APP_TAGLINE = "Study sessions planned around real exam dates."
 DEFAULT_COUNTRY = "PT"
-DEFAULT_EXAM_WEIGHT = db.DEFAULT_EXAM_WEIGHT
 NOVA_LOGO_PATH = Path(__file__).parent / "assets" / "nova-logo-inverted.png"
 NOVA_FAVICON_PATH = Path(__file__).parent / "assets" / "nova-favicon.png"
 
@@ -102,27 +101,6 @@ def difficulty_multiplier(difficulty: int) -> float:
     return DIFFICULTY_MULTIPLIERS[difficulty_label(int(difficulty))]
 
 
-def normalized_exam_weight(value) -> float:
-    if value is None:
-        return DEFAULT_EXAM_WEIGHT
-    try:
-        if pd.isna(value):
-            return DEFAULT_EXAM_WEIGHT
-    except TypeError:
-        pass
-
-    raw = str(value).strip().replace("%", "")
-    if not raw:
-        return DEFAULT_EXAM_WEIGHT
-    try:
-        weight = float(raw)
-    except ValueError:
-        return DEFAULT_EXAM_WEIGHT
-    if weight > 1:
-        weight /= 100
-    return min(1.0, max(0.0, weight))
-
-
 def class_hours_for_ects(ects: float) -> float:
     ects_value = max(0.0, float(ects))
     if abs(ects_value - 3.5) < 0.01:
@@ -132,32 +110,31 @@ def class_hours_for_ects(ects: float) -> float:
     return round(ects_value * CLASS_HOURS_FOR_3_5_ECTS / 3.5, 1)
 
 
-def estimate_hours(ects: float, difficulty: int,
-                   exam_weight: float = DEFAULT_EXAM_WEIGHT) -> float:
-    class_hours = class_hours_for_ects(ects)
-    self_study = max(0.0, WORKLOAD_HOURS_PER_ECTS * float(ects) - class_hours)
+def estimate_hours(ects: float, difficulty: int) -> float:
+    self_study = max(
+        0.0,
+        WORKLOAD_HOURS_PER_ECTS * float(ects) - class_hours_for_ects(ects),
+    )
     return round(
-        self_study
-        * normalized_exam_weight(exam_weight)
-        * difficulty_multiplier(difficulty),
+        self_study * difficulty_multiplier(difficulty),
         1,
     )
 
 
 def _estimate_strip_html(ects: float, difficulty: int,
-                         shown_hours: Optional[float] = None,
-                         exam_weight: float = DEFAULT_EXAM_WEIGHT) -> str:
-    weight = normalized_exam_weight(exam_weight)
-    suggested = estimate_hours(ects, difficulty, weight)
+                         shown_hours: Optional[float] = None) -> str:
+    suggested = estimate_hours(ects, difficulty)
     shown = float(shown_hours) if shown_hours is not None else suggested
     if abs(shown - suggested) > 0.01:
         detail = f"Adjusted from {fmt_hours(suggested)} suggested"
     else:
-        class_hours = class_hours_for_ects(ects)
         multiplier = difficulty_multiplier(difficulty)
+        class_hours = class_hours_for_ects(ects)
         detail = (
-            f"= (28 × {float(ects):g} ECTS - {class_hours:g}h class) "
-            f"× {int(round(weight * 100))}% exam × {multiplier:g} difficulty"
+            f"= ({WORKLOAD_HOURS_PER_ECTS} × {float(ects):g} ECTS "
+            f"- {class_hours:g}h class) "
+            f"× {multiplier:.1f} {difficulty_label(difficulty).lower()} "
+            "difficulty"
         )
     return (
         '<div class="study-estimate-strip">'
@@ -169,31 +146,25 @@ def _estimate_strip_html(ects: float, difficulty: int,
 
 
 def render_estimate_strip(ects: float, difficulty: int,
-                          shown_hours: Optional[float] = None,
-                          exam_weight: float = DEFAULT_EXAM_WEIGHT) -> None:
+                          shown_hours: Optional[float] = None) -> None:
     st.markdown(
-        _estimate_strip_html(ects, difficulty, shown_hours, exam_weight),
+        _estimate_strip_html(ects, difficulty, shown_hours),
         unsafe_allow_html=True,
     )
 
 
 def study_hours_control(ects: float, difficulty: int, key_prefix: str,
                         current_hours: Optional[float] = None,
-                        exam_weight: float = DEFAULT_EXAM_WEIGHT,
                         always_open: bool = False) -> float:
-    weight = normalized_exam_weight(exam_weight)
-    suggested = estimate_hours(ects, difficulty, weight)
+    suggested = estimate_hours(ects, difficulty)
 
-    key_base = (
-        f"{key_prefix}_{float(ects):g}_{int(difficulty)}_"
-        f"{int(round(weight * 100))}"
-    )
+    key_base = f"{key_prefix}_{float(ects):g}_{int(difficulty)}"
     key_base = key_base.replace(".", "_")
     hours_key = f"{key_base}_study_hours"
     value = float(current_hours) if current_hours is not None else suggested
     if always_open:
         shown = float(st.session_state.get(hours_key, value))
-        render_estimate_strip(ects, difficulty, shown, weight)
+        render_estimate_strip(ects, difficulty, shown)
         return float(st.number_input(
             "Study hours",
             min_value=0.0,
@@ -208,7 +179,7 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
     estimate_col, button_col = st.columns(
         [5, 1], gap="small", vertical_alignment="center")
     with estimate_col:
-        render_estimate_strip(ects, difficulty, shown, weight)
+        render_estimate_strip(ects, difficulty, shown)
     with button_col:
         with st.popover(
             "Adjust hours",
@@ -225,19 +196,6 @@ def study_hours_control(ects: float, difficulty: int, key_prefix: str,
                 key=hours_key,
             )
     return float(value)
-
-
-def exam_weight_input(key: str,
-                      value: float = DEFAULT_EXAM_WEIGHT) -> float:
-    percent = int(round(normalized_exam_weight(value) * 100))
-    return st.number_input(
-        "Exam weight (%)",
-        min_value=0,
-        max_value=100,
-        value=percent,
-        step=5,
-        key=key,
-    ) / 100
 
 
 def default_exam_date(period: str, today: Optional[dt.date] = None) -> dt.date:
@@ -440,7 +398,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                         "Add again for a retake."
                     )
 
-                d1, d2, d3 = st.columns(3)
+                d1, d2 = st.columns(2)
                 with d1:
                     diff_label = st.selectbox(
                         "Difficulty",
@@ -449,10 +407,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                         key=f"subject_loader_difficulty_{selected_key}",
                     )
                 with d2:
-                    exam_weight = exam_weight_input(
-                        f"subject_loader_exam_weight_{selected_key}"
-                    )
-                with d3:
                     exam_date = st.date_input(
                         "Exam date",
                         future_date_value(exam_default, today),
@@ -469,7 +423,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     subject["ects"],
                     difficulty,
                     f"subject_loader_{selected_key}",
-                    exam_weight=exam_weight,
                 )
 
                 label = "Add another attempt" if attempts else "Add subject"
@@ -482,7 +435,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                         subject["ects"],
                         difficulty,
                         estimated,
-                        exam_weight=exam_weight,
                     )
                     idx = subject_keys.index(selected_key)
                     st.session_state["subject_loader_next_subject"] = (
@@ -518,7 +470,7 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     key="custom_course_semester",
                 )
 
-            d1, d2, d3 = st.columns(3)
+            d1, d2 = st.columns(2)
             with d1:
                 diff_label = st.selectbox(
                     "Difficulty",
@@ -527,8 +479,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     key="custom_course_difficulty",
                 )
             with d2:
-                exam_weight = exam_weight_input("custom_course_exam_weight")
-            with d3:
                 today = dt.date.today()
                 exam_date = st.date_input(
                     "Exam date",
@@ -546,7 +496,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                 ects,
                 difficulty,
                 "custom_course",
-                exam_weight=exam_weight,
             )
 
             if st.button("Add custom course",
@@ -562,7 +511,6 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     ects,
                     difficulty,
                     estimated,
-                    exam_weight=exam_weight,
                 )
                 st.toast(f"Added {final_name}.")
                 st.rerun()
@@ -1660,17 +1608,12 @@ def page_courses(user: dict):
                     )
                     edit_difficulty = DIFFICULTY_VALUES[
                         edit_difficulty_label]
-                    edit_exam_weight = exam_weight_input(
-                        f"edit_exam_weight_{c['id']}",
-                        c.get("exam_weight", DEFAULT_EXAM_WEIGHT),
-                    )
 
                 edit_estimated = study_hours_control(
                     edit_ects,
                     edit_difficulty,
                     f"edit_course_{c['id']}",
                     current_hours=c["estimated_hours"],
-                    exam_weight=edit_exam_weight,
                     always_open=True,
                 )
 
@@ -1726,7 +1669,6 @@ def page_courses(user: dict):
                         edit_ects,
                         edit_difficulty,
                         edit_estimated,
-                        exam_weight=edit_exam_weight,
                         course_id=c["id"],
                     )
                     st.toast(f"Updated {final_name}.")
@@ -1925,7 +1867,6 @@ def page_customize(user: dict):
                 float(selected["ects"]),
                 int(selected["difficulty"]),
                 float(target_hours),
-                exam_weight=selected.get("exam_weight", DEFAULT_EXAM_WEIGHT),
                 course_id=int(selected["id"]),
             )
             updated = rebalance_course_sessions(
@@ -2465,11 +2406,6 @@ def page_export(user: dict):
              "exam_date": c["exam_date"].isoformat(),
              "ects": c["ects"],
              "difficulty": difficulty_label(int(c["difficulty"])),
-             "exam_weight": int(round(
-                 normalized_exam_weight(
-                     c.get("exam_weight", DEFAULT_EXAM_WEIGHT)
-                 ) * 100
-             )),
              "estimated_hours": c["estimated_hours"]}
             for c in courses
         ])
@@ -2483,9 +2419,9 @@ def page_export(user: dict):
 
     st.subheader("Import courses")
     st.caption(
-        "Columns: `name, exam_date, ects, difficulty, exam_weight`. "
-        "Difficulty can be Low, Medium, or High. Existing courses with the "
-        "same name will be updated.")
+        "Columns: `name, exam_date, ects, difficulty`. Difficulty can be "
+        "Low, Medium, or High. Existing courses with the same name will be "
+        "updated.")
     uploaded = st.file_uploader("Upload CSV", type=["csv"])
     if uploaded:
         try:
@@ -2500,15 +2436,10 @@ def page_export(user: dict):
                      if c["name"] == str(r["name"])), None)
                 ects_value = float(r["ects"])
                 difficulty = difficulty_value(r["difficulty"])
-                exam_weight = (
-                    normalized_exam_weight(r["exam_weight"])
-                    if "exam_weight" in df.columns
-                    else DEFAULT_EXAM_WEIGHT
-                )
                 estimated = (
                     float(r["estimated_hours"])
                     if "estimated_hours" in df.columns
-                    else estimate_hours(ects_value, difficulty, exam_weight)
+                    else estimate_hours(ects_value, difficulty)
                 )
                 db.upsert_course(
                     user["id"],
@@ -2517,7 +2448,6 @@ def page_export(user: dict):
                     ects=ects_value,
                     difficulty=difficulty,
                     estimated_hours=estimated,
-                    exam_weight=exam_weight,
                     course_id=existing["id"] if existing else None,
                 )
                 imported += 1
