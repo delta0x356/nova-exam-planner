@@ -11,8 +11,11 @@ import streamlit as st
 HOLIDAYS_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country}"
 COUNTRIES_URL = "https://date.nager.at/api/v3/AvailableCountries"
 CAFETERIA_MENU_URL = "https://monbistrot.pt/display/10"
+CAFETERIA_WEEKLY_MENU_URL_TEMPLATE = (
+    "https://monbistrot.pt/display-weekly/10?range={range_name}"
+)
 CAFETERIA_WEEKLY_MENU_URL = (
-    "https://monbistrot.pt/display-weekly/10?range=current-week"
+    CAFETERIA_WEEKLY_MENU_URL_TEMPLATE.format(range_name="current-week")
 )
 CAFETERIA_WEEKLY_PAGE_URL_TEMPLATE = (
     "https://monbistrot.pt/menu/nova-sbe-semana-de-{start}-{end}"
@@ -99,8 +102,8 @@ def _current_week_bounds(
     return monday, friday
 
 
-def _current_week_page_url() -> str:
-    monday, friday = _current_week_bounds()
+def _weekly_page_url(reference_date: dt.date | None = None) -> str:
+    monday, friday = _current_week_bounds(reference_date)
     return CAFETERIA_WEEKLY_PAGE_URL_TEMPLATE.format(
         start=monday.isoformat(),
         end=friday.isoformat(),
@@ -162,8 +165,10 @@ def _build_weekly_sections_from_text(day_text: str) -> list[dict]:
     return sections
 
 
-def _fetch_weekly_menu_from_page() -> dict:
-    source_url = _current_week_page_url()
+def _fetch_weekly_menu_from_page(
+    reference_date: dt.date | None = None,
+) -> dict:
+    source_url = _weekly_page_url(reference_date)
     response = requests.get(source_url, timeout=_CAFETERIA_TIMEOUT)
     response.raise_for_status()
 
@@ -188,7 +193,7 @@ def _fetch_weekly_menu_from_page() -> dict:
     if not matches:
         raise ValueError("Could not locate weekday blocks in weekly menu page")
 
-    monday, _ = _current_week_bounds()
+    monday, _ = _current_week_bounds(reference_date)
     day_index = {
         "segunda": 0,
         "terca": 1,
@@ -216,6 +221,48 @@ def _fetch_weekly_menu_from_page() -> dict:
     if not days:
         raise ValueError("Could not parse any weekly day sections")
     return {"source": source_url, "days": sorted(days, key=lambda d: d["date"])}
+
+
+def _parse_weekly_json_menus(menus: list[dict]) -> list[dict]:
+    days = []
+    for menu_day in menus:
+        day_date = _clean_menu_line(menu_day.get("date"))
+        sections = _build_menu_sections(menu_day.get("dishes") or [])
+        if day_date and sections:
+            days.append({
+                "date": day_date,
+                "date_label": _format_menu_day_label(day_date),
+                "sections": sections,
+            })
+    return sorted(days, key=lambda day: day.get("date", ""))
+
+
+def _last_menu_date(days: list[dict]) -> dt.date | None:
+    parsed = []
+    for day in days:
+        try:
+            parsed.append(dt.date.fromisoformat(str(day.get("date"))))
+        except ValueError:
+            continue
+    return max(parsed) if parsed else None
+
+
+def _choose_weekly_candidate(candidates: list[dict]) -> dict:
+    today = dt.date.today()
+    current = next(
+        (candidate for candidate in candidates
+         if candidate.get("range_name") == "current-week"),
+        None,
+    )
+    next_week = next(
+        (candidate for candidate in candidates
+         if candidate.get("range_name") == "next-week"),
+        None,
+    )
+
+    if next_week and (not current or (_last_menu_date(current["days"]) or today) < today):
+        return next_week
+    return current or next_week or candidates[0]
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -260,43 +307,57 @@ def get_daily_cafeteria_menu() -> dict:
 def get_weekly_cafeteria_menu() -> dict:
     """Fetch the Nova SBE weekly cafeteria menu."""
     try:
-        source_url = CAFETERIA_WEEKLY_MENU_URL
-        data = {}
-        menus = []
-        try:
-            response = requests.get(source_url, timeout=_CAFETERIA_TIMEOUT)
-            response.raise_for_status()
-            data = response.json() if response.text else {}
-            menus = data.get("menus") or []
-        except (requests.RequestException, ValueError):
-            menus = []
+        candidates = []
+        next_week_reference = dt.date.today() + dt.timedelta(days=7)
 
-        days = []
-        if menus:
-            for menu_day in menus:
-                day_date = _clean_menu_line(menu_day.get("date"))
-                sections = _build_menu_sections(menu_day.get("dishes") or [])
-                if day_date and sections:
-                    days.append({
-                        "date": day_date,
-                        "date_label": _format_menu_day_label(day_date),
-                        "sections": sections,
+        for range_name in ("current-week", "next-week"):
+            source_url = CAFETERIA_WEEKLY_MENU_URL_TEMPLATE.format(
+                range_name=range_name
+            )
+            data = {}
+            try:
+                response = requests.get(source_url, timeout=_CAFETERIA_TIMEOUT)
+                response.raise_for_status()
+                data = response.json() if response.text else {}
+                days = _parse_weekly_json_menus(data.get("menus") or [])
+                if days:
+                    candidates.append({
+                        "range_name": range_name,
+                        "source": source_url,
+                        "unit": data.get("unit") or {},
+                        "days": days,
                     })
-        else:
-            fallback = _fetch_weekly_menu_from_page()
-            days = fallback["days"]
-            source_url = fallback["source"]
+            except (requests.RequestException, ValueError):
+                pass
 
-        if not days:
+        if not candidates:
+            for range_name, reference in (
+                ("current-week", dt.date.today()),
+                ("next-week", next_week_reference),
+            ):
+                try:
+                    fallback = _fetch_weekly_menu_from_page(reference)
+                    candidates.append({
+                        "range_name": range_name,
+                        "source": fallback["source"],
+                        "unit": {},
+                        "days": fallback["days"],
+                    })
+                except (requests.RequestException, ValueError):
+                    pass
+
+        if not candidates:
             raise ValueError("Could not parse weekly menu")
 
-        days.sort(key=lambda day: day.get("date", ""))
-        unit = data.get("unit") or {}
+        selected = _choose_weekly_candidate(candidates)
+        days = selected["days"]
+        unit = selected.get("unit") or {}
         return {
             "ok": True,
-            "source": source_url,
+            "source": selected["source"],
             "unit_name": _clean_menu_line(unit.get("name")) or "NOVA SBE",
             "week_label": _format_week_label(days[0]["date"], days[-1]["date"]),
+            "range_name": selected.get("range_name", "current-week"),
             "days": days,
         }
     except Exception as exc:

@@ -1498,6 +1498,23 @@ def _cafeteria_lunch_summary(menu: dict) -> str:
     return "check today's cafeteria options before scheduling long blocks."
 
 
+def _weekly_reference_day(weekly: dict) -> Optional[dict]:
+    days = weekly.get("days") or []
+    today = dt.date.today()
+    future_days = []
+    for day in days:
+        try:
+            day_date = dt.date.fromisoformat(str(day.get("date")))
+        except ValueError:
+            continue
+        if day_date >= today:
+            future_days.append((day_date, day))
+
+    if future_days:
+        return sorted(future_days, key=lambda item: item[0])[0][1]
+    return days[0] if days else None
+
+
 def _weekly_cafeteria_html(days: list[dict]) -> str:
     cards = []
     for day in days:
@@ -1546,6 +1563,23 @@ def page_cafeteria(user: dict):
         st.caption(
             f"{daily.get('unit_name', 'NOVA SBE')} - "
             f"{daily.get('date_label', '')}"
+        )
+    elif weekly.get("ok") and weekly.get("days"):
+        reference_day = _weekly_reference_day(weekly)
+        label = "Next menu"
+        if reference_day:
+            try:
+                day_date = dt.date.fromisoformat(str(reference_day.get("date")))
+                if day_date < dt.date.today():
+                    label = "Latest menu"
+            except ValueError:
+                pass
+        st.markdown(
+            f'<div class="nova-lunch-line">'
+            f'<strong>{h(label)}:</strong> '
+            f'{h(_cafeteria_lunch_summary(reference_day or {}))}'
+            f'</div>',
+            unsafe_allow_html=True,
         )
     else:
         st.info("Today's cafeteria menu is unavailable right now.")
