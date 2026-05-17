@@ -25,7 +25,7 @@ PROGRAM_GROUPS = {
         "economics_elective",
         "other_elective",
     ),
-    MASTER_OF_MANAGEMENT: ("mandatory",),
+    MASTER_OF_MANAGEMENT: ("mandatory", "management_elective"),
     MASTER_OF_BUSINESS_ANALYTICS: (
         "mandatory",
         "business_analytics_elective",
@@ -57,6 +57,7 @@ GROUP_LABELS = {
     },
     MASTER_OF_MANAGEMENT: {
         "mandatory": "Mandatory",
+        "management_elective": "Management electives",
     },
     MASTER_OF_BUSINESS_ANALYTICS: {
         "mandatory": "Mandatory",
@@ -938,6 +939,13 @@ def _read_subjects() -> tuple[dict, ...]:
 
 SUBJECTS = _read_subjects()
 
+VIRTUAL_GROUP_SOURCES = {
+    (MASTER_OF_MANAGEMENT, "management_elective"): (
+        MASTER_OF_FINANCE,
+        "other_elective",
+    ),
+}
+
 
 def groups_for(program: str) -> tuple[str, ...]:
     return PROGRAM_GROUPS.get(program, PROGRAM_GROUPS[MASTER_OF_FINANCE])
@@ -949,11 +957,23 @@ def group_label(program: str, group: str) -> str:
 
 
 def subjects_for(program: str, groups: list[str]) -> list[dict]:
-    wanted = set(groups)
-    return [
-        subject for subject in SUBJECTS
-        if subject["program"] == program and subject["group"] in wanted
-    ]
+    out = []
+    for group in groups:
+        source = VIRTUAL_GROUP_SOURCES.get((program, group))
+        if source:
+            source_program, source_group = source
+            out.extend(
+                {**subject, "program": program, "group": group}
+                for subject in SUBJECTS
+                if subject["program"] == source_program
+                and subject["group"] == source_group
+            )
+        else:
+            out.extend(
+                subject for subject in SUBJECTS
+                if subject["program"] == program and subject["group"] == group
+            )
+    return out
 
 
 def subject_key(subject: dict) -> str:

@@ -359,6 +359,13 @@ def fmt_task_minutes(minutes: float) -> str:
     return fmt_minutes(minutes)
 
 
+def widget_key_slug(value: str) -> str:
+    return "".join(
+        char.lower() if char.isalnum() else "_"
+        for char in value
+    ).strip("_")
+
+
 def _render_subject_loader(user: dict, existing_courses: list[dict]):
     st.subheader("Add course")
     with st.container(border=True):
@@ -382,8 +389,9 @@ def _render_subject_loader(user: dict, existing_courses: list[dict]):
                     "Degree",
                     catalog.PROGRAMS,
                     key="subject_loader_program",
+                    filter_mode="contains",
                 )
-            program_key = program.lower().replace(" ", "_")
+            program_key = widget_key_slug(program)
             group_order = catalog.groups_for(program)
             label_to_group = {
                 catalog.group_label(program, group): group
